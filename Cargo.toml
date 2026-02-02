@@ -1,0 +1,18 @@
+[workspace]
+members = ["crispy-fw-sample", "crispy-bootloader", "crispy-common"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+
+[profile.release]
+opt-level = 2
+lto = false
+
+[profile.dev]
+opt-level = 1
+
+# Patch to fix MPU bug in rp2040-hal
+[patch.crates-io]
+rp2040-hal = { git = "https://github.com/rp-rs/rp-hal", branch = "main" }

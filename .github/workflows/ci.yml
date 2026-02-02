@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  TARGET: thumbv6m-none-eabi
+
+jobs:
+  check:
+    name: Format + Clippy + Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv6m-none-eabi
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --release -p crispy-bootloader -p crispy-fw-sample --target $TARGET -- -D warnings
+
+      - name: Build
+        run: cargo build --release -p crispy-bootloader -p crispy-fw-sample --target $TARGET
+
+      - name: Install arm-none-eabi-objcopy
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Build combined binary + UF2
+        run: ./scripts/build-combined.sh
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            target/${{ env.TARGET }}/release/crispy-bootloader
+            target/${{ env.TARGET }}/release/crispy-fw-sample
+            target/${{ env.TARGET }}/release/combined.bin
+            target/${{ env.TARGET }}/release/combined.uf2

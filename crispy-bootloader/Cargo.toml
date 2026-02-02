@@ -1,0 +1,19 @@
+[package]
+name = "crispy-bootloader"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[[bin]]
+name = "crispy-bootloader"
+path = "src/main.rs"
+
+[dependencies]
+crispy-common = { path = "../crispy-common" }
+rp2040-boot2 = "0.3"
+embedded-hal = "1.0.0"
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+panic-probe = { version = "1", features = ["print-defmt"] }
+defmt = "1"
+defmt-rtt = "1"
