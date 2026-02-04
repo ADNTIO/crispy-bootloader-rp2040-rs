@@ -7,6 +7,7 @@
 #![no_main]
 
 mod boot;
+mod boot_fsm;
 mod flash;
 mod peripherals;
 mod update;
