@@ -11,10 +11,13 @@ endif()
 
 include(pico_sdk_import.cmake)
 
-project(crispy-fw-sample-cpp C CXX ASM)
+project(crispy-fw-sample-cpp VERSION 0.2.0 LANGUAGES C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
+
+# Define firmware version for banner
+add_compile_definitions(CRISPY_FW_VERSION="${PROJECT_VERSION}")
 
 pico_sdk_init()
 
