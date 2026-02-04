@@ -7,6 +7,7 @@
 #   crispy_configure_firmware(your_target)
 
 cmake_minimum_required(VERSION 3.13)
+project(crispy_sdk VERSION 0.2.0)
 
 # Interface library (header-only + sources for linking)
 add_library(crispy_sdk INTERFACE)
