@@ -6,6 +6,10 @@
 #include <cstring>
 #include <cstdio>
 
+#ifndef CRISPY_FW_VERSION
+#define CRISPY_FW_VERSION "0.0.0"
+#endif
+
 namespace crispy {
 
 bool process_command(const char* line) {
