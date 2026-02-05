@@ -3,11 +3,10 @@
 
 //! Boot management: memory layout, firmware validation, bank selection, and jump.
 
-use crate::boot_fsm::{
-    needs_rollback, select_boot_bank_fsm, toggle_bank, BankPair, BankValidation,
-};
 use crate::flash;
 use crispy_common::protocol::{BootData, RAM_UPDATE_FLAG_ADDR, RAM_UPDATE_MAGIC};
+
+const MAX_BOOT_ATTEMPTS: u8 = 3;
 
 unsafe extern "C" {
     static __fw_a_entry: u32;
@@ -115,57 +114,75 @@ pub fn validate_bank(flash_addr: u32) -> Option<(u32, u32)> {
     }
 }
 
-// ============================================================================
-// Boot bank selection - uses FSM from boot_fsm module
-// ============================================================================
-
-/// Perform hardware validation of a bank and return validation results.
-fn validate_bank_hardware(addr: u32, crc: u32, size: u32) -> BankValidation {
-    BankValidation {
-        crc_valid: validate_bank_with_crc(addr, crc, size),
-        basic_valid: validate_bank(addr).is_some(),
-    }
-}
-
 /// Select which bank to boot from, with automatic rollback on failure.
 pub fn select_boot_bank(bd: &BootData, layout: &MemoryLayout) -> (u32, BootData) {
-    // Handle rollback if needed
-    let active_bank = if needs_rollback(bd) {
+    let mut bd = *bd;
+
+    if bd.boot_attempts >= MAX_BOOT_ATTEMPTS && bd.confirmed == 0 {
         defmt::println!(
             "Boot attempts exhausted ({}), rolling back",
             bd.boot_attempts
         );
-        toggle_bank(bd.active_bank)
-    } else {
-        bd.active_bank
-    };
-
-    // Create bank pair and perform hardware validation
-    let mut banks = BankPair::new(active_bank, layout.fw_a, layout.fw_b, bd);
-
-    // Perform hardware validation
-    let primary_validation = validate_bank_hardware(
-        banks.primary.addr,
-        banks.primary.crc,
-        banks.primary.size,
-    );
-    let fallback_validation = validate_bank_hardware(
-        banks.fallback.addr,
-        banks.fallback.crc,
-        banks.fallback.size,
-    );
-
-    banks = banks.with_validation(primary_validation, fallback_validation);
-
-    // Log fallback if primary is invalid
-    if !primary_validation.crc_valid && fallback_validation.crc_valid {
-        defmt::println!("Primary bank invalid, trying fallback");
+        bd.active_bank = toggle_bank(bd.active_bank);
+        bd.boot_attempts = 0;
+        bd.confirmed = 0;
     }
 
-    // Use the pure FSM logic to make the decision
-    let decision = select_boot_bank_fsm(bd, banks);
+    let (primary_addr, fallback_addr) = bank_addresses(&bd, layout);
+    let (primary_crc, primary_size) = bank_metadata(&bd, bd.active_bank);
+    let (fallback_crc, fallback_size) = bank_metadata(&bd, toggle_bank(bd.active_bank));
 
-    (decision.flash_addr, decision.apply_to(bd))
+    if validate_bank_with_crc(primary_addr, primary_crc, primary_size) {
+        bd.boot_attempts += 1;
+        return (primary_addr, bd);
+    }
+
+    defmt::println!("Primary bank invalid, trying fallback");
+
+    if validate_bank_with_crc(fallback_addr, fallback_crc, fallback_size) {
+        bd.active_bank = toggle_bank(bd.active_bank);
+        bd.boot_attempts = 1;
+        bd.confirmed = 0;
+        return (fallback_addr, bd);
+    }
+
+    if validate_bank(primary_addr).is_some() {
+        bd.boot_attempts += 1;
+        return (primary_addr, bd);
+    }
+
+    if validate_bank(fallback_addr).is_some() {
+        bd.active_bank = toggle_bank(bd.active_bank);
+        bd.boot_attempts = 1;
+        return (fallback_addr, bd);
+    }
+
+    bd.boot_attempts += 1;
+    (primary_addr, bd)
+}
+
+fn toggle_bank(bank: u8) -> u8 {
+    if bank == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn bank_addresses(bd: &BootData, layout: &MemoryLayout) -> (u32, u32) {
+    if bd.active_bank == 0 {
+        (layout.fw_a, layout.fw_b)
+    } else {
+        (layout.fw_b, layout.fw_a)
+    }
+}
+
+fn bank_metadata(bd: &BootData, bank: u8) -> (u32, u32) {
+    if bank == 0 {
+        (bd.crc_a, bd.size_a)
+    } else {
+        (bd.crc_b, bd.size_b)
+    }
 }
 
 /// # Safety
