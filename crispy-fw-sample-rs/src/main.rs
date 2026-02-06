@@ -27,6 +27,19 @@ fn usb_bus_ref() -> &'static UsbBusAllocator<UsbBus> {
     unsafe { (*core::ptr::addr_of!(USB_BUS)).as_ref().unwrap() }
 }
 
+const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn print_welcome(serial: &mut SerialPort<UsbBus>) {
+    let _ = serial.write(b"\r\n");
+    let _ = serial.write(b"+======================================+\r\n");
+    let _ = serial.write(b"|   Crispy Firmware Sample (Rust)      |\r\n");
+    let _ = serial.write(b"|   Version: ");
+    let _ = serial.write(FW_VERSION.as_bytes());
+    let _ = serial.write(b"                        |\r\n");
+    let _ = serial.write(b"+======================================+\r\n");
+    let _ = serial.write(b"Type 'help' for available commands.\r\n> ");
+}
+
 /// Process a received command line and return a response.
 /// Returns true if we should reboot to bootloader.
 fn process_command(line: &str, serial: &mut SerialPort<UsbBus>) -> bool {
@@ -170,10 +183,19 @@ fn main() -> ! {
     let mut cmd_buf = [0u8; 64];
     let mut cmd_pos = 0usize;
     let mut blink_counter = 0u32;
+    let mut welcome_printed = false;
 
     loop {
         // Poll USB
         usb_dev.poll(&mut [&mut serial]);
+
+        // Print welcome when terminal connects (DTR set)
+        if serial.dtr() && !welcome_printed {
+            print_welcome(&mut serial);
+            welcome_printed = true;
+        } else if !serial.dtr() {
+            welcome_printed = false;
+        }
 
         // Read incoming data
         let mut buf = [0u8; 64];
@@ -198,6 +220,7 @@ fn main() -> ! {
                         }
                         cmd_pos = 0;
                     }
+                    let _ = serial.write(b"> ");
                 } else if byte == 0x7F || byte == 0x08 {
                     // Backspace
                     if cmd_pos > 0 {

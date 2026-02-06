@@ -13,6 +13,7 @@
 #[cfg(feature = "std")]
 extern crate alloc;
 
+pub mod boot_fsm;
 pub mod cobs;
 pub mod protocol;
 
