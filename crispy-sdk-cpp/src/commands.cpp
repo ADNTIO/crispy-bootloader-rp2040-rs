@@ -6,6 +6,10 @@
 #include <cstring>
 #include <cstdio>
 
+#ifndef CRISPY_FW_VERSION
+#define CRISPY_FW_VERSION "0.0.0"
+#endif
+
 namespace crispy {
 
 bool process_command(const char* line) {
@@ -47,7 +51,11 @@ bool process_command(const char* line) {
 }
 
 void print_welcome() {
-    printf("\r\n=== Crispy C++ Firmware ===\r\n");
+    printf("\r\n");
+    printf("╔══════════════════════════════════════╗\r\n");
+    printf("║   Crispy Firmware Sample (C++)       ║\r\n");
+    printf("║   Version: " CRISPY_FW_VERSION "                        ║\r\n");
+    printf("╚══════════════════════════════════════╝\r\n");
     printf("Type 'help' for available commands.\r\n");
 }
 
