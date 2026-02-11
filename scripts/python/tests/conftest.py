@@ -104,34 +104,81 @@ def enter_update_mode_via_swd() -> bool:
 
 def find_bootloader_port(timeout: float = 10.0) -> str:
     """Find the serial port for the Crispy Bootloader by USB ID."""
-    import glob
-    import os
+    return find_firmware_port(pid="000a", timeout=timeout)
 
-    # USB IDs for the bootloader
-    BOOTLOADER_VID = "2e8a"
-    BOOTLOADER_PID = "000a"
+
+def find_firmware_port(pid: str, timeout: float = 10.0, vid: str = "2e8a") -> str:
+    """Find a serial port by USB VID/PID via sysfs.
+
+    Args:
+        pid: USB Product ID (hex string, e.g. "000a").
+        timeout: How long to poll before raising TimeoutError.
+        vid: USB Vendor ID (hex string, defaults to "2e8a").
+    """
+    import glob as _glob
 
     start = time.time()
     while time.time() - start < timeout:
-        for port in glob.glob("/dev/ttyACM*"):
-            # Check the USB vendor/product ID via sysfs
+        for port in _glob.glob("/dev/ttyACM*"):
             try:
-                # /dev/ttyACM0 -> /sys/class/tty/ttyACM0/device/../idVendor
                 tty_name = os.path.basename(port)
                 sys_path = f"/sys/class/tty/{tty_name}/device/.."
 
                 with open(f"{sys_path}/idVendor", "r") as f:
-                    vid = f.read().strip()
+                    found_vid = f.read().strip()
                 with open(f"{sys_path}/idProduct", "r") as f:
-                    pid = f.read().strip()
+                    found_pid = f.read().strip()
 
-                if vid == BOOTLOADER_VID and pid == BOOTLOADER_PID:
+                if found_vid == vid and found_pid == pid:
                     return port
             except (FileNotFoundError, IOError):
                 continue
         time.sleep(0.5)
 
-    raise TimeoutError("Bootloader serial port not found")
+    raise TimeoutError(f"USB device {vid}:{pid} not found within {timeout}s")
+
+
+def wait_for_serial_banner(
+    port: str, expected_text: str, timeout: float = 10.0
+) -> str:
+    """Open a serial port and read until *expected_text* appears.
+
+    Returns the full text read so far (including the matching line).
+    Raises ``TimeoutError`` if the text is not found within *timeout* seconds.
+    """
+    import serial
+
+    start = time.time()
+    buf = ""
+    with serial.Serial(port, baudrate=115200, timeout=1) as ser:
+        while time.time() - start < timeout:
+            raw = ser.read(ser.in_waiting or 1)
+            if raw:
+                buf += raw.decode(errors="replace")
+                if expected_text in buf:
+                    return buf
+    raise TimeoutError(
+        f"Banner '{expected_text}' not found on {port} within {timeout}s"
+    )
+
+
+def run_crispy_upload(
+    project_root: "Path", port: str, *args: str
+) -> "tuple[bool, str, str]":
+    """Execute ``cargo run -p crispy-upload -- <args>`` and return results.
+
+    Returns:
+        (success, stdout, stderr)
+    """
+    cmd = [
+        "cargo", "run", "--release", "-p", "crispy-upload", "--",
+        "--port", port,
+        *args,
+    ]
+    result = subprocess.run(
+        cmd, cwd=project_root, capture_output=True, text=True, timeout=60,
+    )
+    return result.returncode == 0, result.stdout, result.stderr
 
 
 @pytest.fixture(scope="session")
