@@ -4,8 +4,8 @@ EMBEDDED_TARGET := thumbv6m-none-eabi
 CHIP := RP2040
 RELEASE_DIR := target/$(EMBEDDED_TARGET)/release
 
-.PHONY: help all embedded host bootloader firmware upload clean clippy test test-integration
-.PHONY: bootloader-bin firmware-bin bootloader-uf2
+.PHONY: help all embedded host bootloader firmware firmware-cpp upload clean clippy test test-integration
+.PHONY: bootloader-bin firmware-bin firmware-cpp-bin bootloader-uf2
 .PHONY: flash-bootloader run-bootloader
 .PHONY: install-probe-rs install-tools update-mode reset
 
@@ -22,6 +22,7 @@ help:
 	@echo "  upload           Build upload tool only"
 	@echo "  bootloader-bin   Build crispy-bootloader.bin"
 	@echo "  firmware-bin     Build crispy-fw-sample-rs.bin"
+	@echo "  firmware-cpp     Build C++ firmware sample (CMake + Pico SDK)"
 	@echo "  bootloader-uf2   Build crispy-bootloader.uf2"
 	@echo ""
 	@echo "Flash/run targets:"
@@ -70,6 +71,14 @@ bootloader-bin: bootloader
 firmware-bin: firmware
 	rust-objcopy -O binary $(RELEASE_DIR)/crispy-fw-sample-rs $(RELEASE_DIR)/crispy-fw-sample-rs.bin
 
+# C++ firmware (CMake + Pico SDK)
+CPP_FW_DIR := crispy-fw-sample-cpp
+CPP_FW_BUILD := $(CPP_FW_DIR)/build
+
+firmware-cpp:
+	cmake -S $(CPP_FW_DIR) -B $(CPP_FW_BUILD) -DCMAKE_BUILD_TYPE=Release
+	cmake --build $(CPP_FW_BUILD)
+
 # UF2 targets
 bootloader-uf2: bootloader-bin host
 	cargo run --release -p crispy-upload -- bin2uf2 $(RELEASE_DIR)/crispy-bootloader.bin $(RELEASE_DIR)/crispy-bootloader.uf2 --base-address 0x10000000
@@ -98,6 +107,7 @@ test-integration: all
 # Clean
 clean:
 	cargo clean
+	rm -rf $(CPP_FW_BUILD)
 
 # Install cargo-binutils (provides rust-objcopy)
 install-tools:
