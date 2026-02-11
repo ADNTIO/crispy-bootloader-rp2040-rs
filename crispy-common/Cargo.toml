@@ -6,13 +6,12 @@ license = "MIT"
 
 [features]
 default = []
-std = ["serde/std", "postcard/use-std"]
+std = ["serde/std"]
 embedded = ["rp2040-hal", "embedded-hal", "cortex-m"]
 
 [dependencies]
 serde = { version = "1", default-features = false, features = ["derive"] }
 heapless = { version = "0.8", features = ["serde"] }
-postcard = { version = "1", default-features = false, features = ["heapless"] }
 
 # Optional embedded dependencies
 rp2040-hal = { version = "0.11", features = ["rt", "critical-section-impl"], optional = true }

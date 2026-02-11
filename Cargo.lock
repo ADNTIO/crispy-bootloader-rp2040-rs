@@ -352,7 +352,6 @@ dependencies = [
  "cortex-m",
  "embedded-hal 1.0.0",
  "heapless 0.8.0",
- "postcard",
  "rp2040-hal",
  "serde",
 ]
@@ -363,7 +362,6 @@ version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
- "crc",
  "crispy-common",
  "defmt",
  "defmt-rtt",
