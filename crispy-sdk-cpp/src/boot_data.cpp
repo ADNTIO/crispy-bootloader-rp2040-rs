@@ -5,7 +5,6 @@
 #include "pico/stdlib.h"
 #include "hardware/flash.h"
 #include "hardware/sync.h"
-#include "hardware/watchdog.h"
 #include <cstring>
 #include <cstdio>
 
@@ -52,6 +51,22 @@ void confirm_boot() {
     printf("Boot confirmed successfully\r\n");
 }
 
+// Trigger ARM system reset via AIRCR register (same as Rust's SCB::sys_reset)
+static void sys_reset() {
+    constexpr uint32_t AIRCR = 0xE000ED0C;
+    constexpr uint32_t VECTKEY = 0x05FA0000;
+    constexpr uint32_t SYSRESETREQ = 1u << 2;
+
+    // Memory barrier before reset
+    __asm volatile ("dsb 0xF" ::: "memory");
+
+    *reinterpret_cast<volatile uint32_t*>(AIRCR) = VECTKEY | SYSRESETREQ;
+
+    // Wait for reset
+    __asm volatile ("dsb 0xF" ::: "memory");
+    while (true) tight_loop_contents();
+}
+
 void reboot_to_bootloader() {
     printf("Rebooting to bootloader update mode...\r\n");
     sleep_ms(100);
@@ -59,16 +74,16 @@ void reboot_to_bootloader() {
     // Write magic to RAM flag
     *reinterpret_cast<volatile uint32_t*>(RAM_UPDATE_FLAG_ADDR) = RAM_UPDATE_MAGIC;
 
-    // Trigger watchdog reset
-    watchdog_reboot(0, 0, 0);
-    while (true) tight_loop_contents();
+    // Small delay to ensure write completes
+    busy_wait_us(100000);
+
+    sys_reset();
 }
 
 void reboot() {
     printf("Rebooting...\r\n");
     sleep_ms(100);
-    watchdog_reboot(0, 0, 0);
-    while (true) tight_loop_contents();
+    sys_reset();
 }
 
 } // namespace crispy
