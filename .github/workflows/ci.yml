@@ -44,21 +44,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: thumbv6m-none-eabi
+          components: llvm-tools-preview
+
+      - name: Install tools
+        run: |
+          cargo install cargo-binutils
+          sudo apt-get update && sudo apt-get install -y libudev-dev
 
       - name: Build
-        run: cargo build --release -p crispy-bootloader -p crispy-fw-sample-rs --target $TARGET
-
-      - name: Install arm-none-eabi-objcopy
-        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+        run: cargo build --release -p crispy-bootloader -p crispy-fw-sample-rs --target $TARGET -p crispy-upload
 
       - name: Create binaries
         run: |
-          arm-none-eabi-objcopy -O binary target/$TARGET/release/crispy-bootloader target/$TARGET/release/crispy-bootloader.bin
-          arm-none-eabi-objcopy -O binary target/$TARGET/release/crispy-fw-sample-rs target/$TARGET/release/crispy-fw-sample-rs.bin
-          # Bootloader-only UF2
-          python3 scripts/bin2uf2.py target/$TARGET/release/crispy-bootloader.bin target/$TARGET/release/crispy-bootloader.uf2 0x10000000
-          # Combined (bootloader + firmware sample)
-          ./scripts/build-combined.sh
+          rust-objcopy -O binary target/$TARGET/release/crispy-bootloader target/$TARGET/release/crispy-bootloader.bin
+          rust-objcopy -O binary target/$TARGET/release/crispy-fw-sample-rs target/$TARGET/release/crispy-fw-sample-rs.bin
+          cargo run --release -p crispy-upload -- bin2uf2 target/$TARGET/release/crispy-bootloader.bin target/$TARGET/release/crispy-bootloader.uf2 --base-address 0x10000000
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
@@ -68,8 +68,8 @@ jobs:
             target/${{ env.TARGET }}/release/crispy-bootloader
             target/${{ env.TARGET }}/release/crispy-bootloader.bin
             target/${{ env.TARGET }}/release/crispy-bootloader.uf2
-            target/${{ env.TARGET }}/release/combined.bin
-            target/${{ env.TARGET }}/release/combined.uf2
+            target/${{ env.TARGET }}/release/crispy-fw-sample-rs
+            target/${{ env.TARGET }}/release/crispy-fw-sample-rs.bin
 
   build-upload-linux:
     name: Build crispy-upload (Linux x64)
@@ -130,9 +130,9 @@ jobs:
           cp artifacts/firmware/crispy-bootloader release/crispy-bootloader.elf
           cp artifacts/firmware/crispy-bootloader.bin release/
           cp artifacts/firmware/crispy-bootloader.uf2 release/
-          # Combined (bootloader + sample firmware)
-          cp artifacts/firmware/combined.bin release/
-          cp artifacts/firmware/combined.uf2 release/
+          # Firmware sample
+          cp artifacts/firmware/crispy-fw-sample-rs release/crispy-fw-sample-rs.elf
+          cp artifacts/firmware/crispy-fw-sample-rs.bin release/
           # Upload tools
           cp artifacts/crispy-upload-linux-x64/crispy-upload release/crispy-upload-linux-x64
           cp artifacts/crispy-upload-windows-x64/crispy-upload.exe release/crispy-upload-windows-x64.exe

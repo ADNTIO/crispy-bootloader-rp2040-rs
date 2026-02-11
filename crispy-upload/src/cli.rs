@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 
 use crate::commands;
@@ -18,7 +18,7 @@ use crate::transport::Transport;
 pub struct Cli {
     /// Serial port (e.g., /dev/ttyACM0)
     #[arg(short, long)]
-    pub port: String,
+    pub port: Option<String>,
 
     #[command(subcommand)]
     pub command: Commands,
@@ -57,21 +57,66 @@ pub enum Commands {
 
     /// Reboot the device
     Reboot,
+
+    /// Convert a raw binary file to UF2 format
+    #[command(name = "bin2uf2")]
+    Bin2Uf2 {
+        /// Input binary file
+        #[arg(value_name = "INPUT")]
+        input: PathBuf,
+
+        /// Output UF2 file
+        #[arg(value_name = "OUTPUT")]
+        output: PathBuf,
+
+        /// Base address in hex (default: 0x10000000)
+        #[arg(short = 'a', long, default_value = "0x10000000", value_parser = parse_hex_u32)]
+        base_address: u32,
+
+        /// Family ID in hex (default: 0xE48BFF56 for RP2040)
+        #[arg(short, long, default_value = "0xE48BFF56", value_parser = parse_hex_u32)]
+        family_id: u32,
+    },
+}
+
+/// Parse a hex string (with or without 0x prefix) into a u32.
+fn parse_hex_u32(s: &str) -> Result<u32, String> {
+    let s = s
+        .strip_prefix("0x")
+        .or_else(|| s.strip_prefix("0X"))
+        .unwrap_or(s);
+    u32::from_str_radix(s, 16).map_err(|e| format!("invalid hex value: {e}"))
 }
 
 /// Execute the parsed CLI command.
 pub fn run(cli: Cli) -> Result<()> {
-    let mut transport = Transport::new(&cli.port)?;
-
     match cli.command {
-        Commands::Status => commands::status(&mut transport),
-        Commands::Upload {
-            file,
-            bank,
-            version,
-        } => commands::upload(&mut transport, &file, bank, version),
-        Commands::SetBank { bank } => commands::set_bank(&mut transport, bank),
-        Commands::Wipe => commands::wipe(&mut transport),
-        Commands::Reboot => commands::reboot(&mut transport),
+        Commands::Bin2Uf2 {
+            input,
+            output,
+            base_address,
+            family_id,
+        } => commands::bin2uf2(&input, &output, base_address, family_id),
+
+        cmd => {
+            let port = cli
+                .port
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("--port is required for this command"))?;
+            let mut transport = Transport::new(port)?;
+
+            match cmd {
+                Commands::Status => commands::status(&mut transport),
+                Commands::Upload {
+                    file,
+                    bank,
+                    version,
+                } => commands::upload(&mut transport, &file, bank, version),
+                Commands::SetBank { bank } => commands::set_bank(&mut transport, bank),
+                Commands::Wipe => commands::wipe(&mut transport),
+                Commands::Reboot => commands::reboot(&mut transport),
+                Commands::Bin2Uf2 { .. } => bail!("unreachable"),
+            }
+        }
     }
 }

@@ -26,10 +26,12 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Default options
-DEVICE=""
-SKIP_BUILD=false
-SKIP_FLASH=false
+# Default options (environment variables override defaults)
+DEVICE="${CRISPY_DEVICE:-}"
+SKIP_BUILD="${CRISPY_SKIP_BUILD:+true}"
+SKIP_BUILD="${SKIP_BUILD:-false}"
+SKIP_FLASH="${CRISPY_SKIP_FLASH:+true}"
+SKIP_FLASH="${SKIP_FLASH:-false}"
 VERBOSE=false
 
 log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
@@ -106,7 +108,7 @@ build_artifacts() {
     log_ok "Firmware built"
 
     log_info "Creating firmware binary..."
-    arm-none-eabi-objcopy -O binary \
+    rust-objcopy -O binary \
         "$PROJECT_ROOT/target/thumbv6m-none-eabi/release/crispy-fw-sample-rs" \
         "$PROJECT_ROOT/target/firmware.bin"
 
@@ -114,13 +116,6 @@ build_artifacts() {
     size=$(stat -c%s "$PROJECT_ROOT/target/firmware.bin")
     log_ok "Firmware binary created: $size bytes"
 
-    log_info "Creating combined binary..."
-    if [[ -x "$PROJECT_ROOT/scripts/build-combined.sh" ]]; then
-        "$PROJECT_ROOT/scripts/build-combined.sh"
-        log_ok "Combined binary created"
-    else
-        log_warn "build-combined.sh not found, skipping combined binary"
-    fi
 }
 
 # Flash step

@@ -1,142 +1,112 @@
 # Crispy RP2040 — Bootloader + Firmware
 
-Rust workspace for Raspberry Pi Pico (RP2040) with an A/B bootloader that copies firmware from flash to RAM.
+A/B bootloader for RP2040 (Raspberry Pi Pico) written in Rust. The bootloader copies firmware
+from flash to RAM before executing it, and supports two banks for safe over-the-air updates
+via USB CDC.
+
+```
+         FLASH (2MB)                          RAM (256KB)
+  ┌─────────────────────┐
+  │  BOOT2 (256B)       │
+  ├─────────────────────┤
+  │  Bootloader (64KB)  │──── selects A or B
+  ├─────────────────────┤          │
+  │  FW Bank A (768KB)  │──┐       │
+  ├─────────────────────┤  ├───────┼───► copy ───► ┌──────────────────┐
+  │  FW Bank B (768KB)  │──┘       │               │ Firmware (192KB) │
+  ├─────────────────────┤          │               │ runs from RAM    │
+  │  BOOT_DATA (4KB)    │ ◄────────┘               │ @ 0x20000000     │
+  └─────────────────────┘    active bank           └──────────────────┘
+```
+
+Firmware updates are performed via USB CDC using `crispy-upload`, or via SWD with `probe-rs`.
+
+> **Note:** Since firmware runs from RAM, standard probe-rs cannot set breakpoints (Cortex-M0+
+> FPB only covers flash addresses). This project requires a
+> [custom probe-rs fork](https://github.com/fmahon/probe-rs/tree/feat/software-breakpoints)
+> that adds software breakpoint support. Install it with `make install-probe-rs`.
 
 ## Project Structure
 
 ```
 crispy-bootloader/     # RP2040 bootloader (flash → RAM copy, A/B bank selection)
-crispy-fw-sample-rs/   # Sample Rust firmware (linked for RAM execution at 0x20000000)
-crispy-fw-sample-cpp/  # Sample C++ firmware using Pico SDK
+crispy-fw-sample-rs/   # Sample Rust firmware (runs from RAM @ 0x20000000)
+crispy-fw-sample-cpp/  # Sample C++ firmware (Pico SDK)
 crispy-sdk-cpp/        # C++ SDK for Crispy bootloader
 crispy-common/         # Shared Rust crate (board init, flash operations)
-scripts/python/        # Python upload tool and library
+crispy-upload/         # Host tool to manage the bootloader (upload, wipe, ...)
+scripts/               # Utility scripts (flash, build, python)
 linker_scripts/        # Memory layouts for bootloader and firmware
-crispy-upload/         # Tool to manager the bootloader (upload, wipeout firmware, ..)
 ```
 
 ## Prerequisites
 
-- [Rust](https://rustup.rs/) with `thumbv6m-none-eabi` target:
-  ```bash
-  rustup target add thumbv6m-none-eabi
-  ```
-- `arm-none-eabi-objcopy` (for creating the combined binary):
-  ```bash
-  # Ubuntu/Debian
-  sudo apt install gcc-arm-none-eabi
-  ```
-- Custom probe-rs with software breakpoint support (see below)
+```bash
+# Install rust-objcopy (cargo-binutils) and llvm-tools
+make install-tools
+```
 
-## Build
+## Quick Start
 
 ```bash
-# Build everything (recommended)
+# Show all available targets
+make help
+
+# Build everything (ELF + BIN + UF2)
 make all
 
-# Or individual targets
-make embedded   # bootloader + firmware
-make host       # upload tool
-make combined   # create combined.bin
-
-# Manual commands (if no make)
-cargo build --release -p crispy-bootloader -p crispy-fw-sample-rs --target thumbv6m-none-eabi
-cargo build --release -p crispy-upload
-
-# Check formatting
-cargo fmt --all -- --check
+# Show crispy-upload usage
+cargo run --release -p crispy-upload -- --help
 ```
 
-## Custom probe-rs (required for debugging)
+## Testing
 
-This project runs firmware from RAM (0x20000000+). The Cortex-M0+ FPB hardware breakpoint unit
-only supports flash addresses, so standard probe-rs **cannot set breakpoints** in the firmware.
-
-We use a [fork of probe-rs](https://github.com/fmahon/probe-rs/tree/feat/software-breakpoints)
-that adds software breakpoint support — it injects `BKPT` instructions into RAM, enabling
-breakpoints in RAM-resident code via DAP (VSCode) and GDB.
+### Unit Tests
 
 ```bash
-cargo install probe-rs-tools \
-  --git https://github.com/fmahon/probe-rs.git \
-  --branch feat/software-breakpoints \
-  --locked --force
+make test
 ```
 
-Verify: `probe-rs --version`
+### Integration Tests (hardware)
 
-## Flash & Run
+Integration tests require a physical RP2040 board connected via SWD probe.
 
 ```bash
-# Flash bootloader via SWD (build + flash)
-make flash-bootloader
+# Full run: build, flash, and test
+./scripts/test-integration.sh --device /dev/ttyACM0
 
-# Flash firmware via SWD (build + flash)
-make flash-firmware
-
-# Run with defmt output (build + flash + attach RTT)
-make run-bootloader
-make run-firmware
-
-# Flash combined binary manually
-probe-rs download --chip RP2040 --binary-format bin --base-address 0x10000000 \
-  target/thumbv6m-none-eabi/release/combined.bin
-
-# Or flash UF2 via BOOTSEL mode (requires picotool)
-./scripts/flash.sh
+# Or using environment variables
+export CRISPY_DEVICE=/dev/ttyACM0
+./scripts/test-integration.sh
 ```
 
-## Debugging (VSCode)
-
-Install the [probe-rs](https://marketplace.visualstudio.com/items?itemName=probe-rs.probe-rs-debugger) VSCode extension. Three debug configurations are provided:
-
-- **Debug Bootloader** — Launch: builds, flashes, halts at bootloader entry
-- **Debug Firmware (via bootloader)** — Attach: full boot chain, then attach to running firmware
-- **Debug Firmware (direct RAM)** — Attach: loads firmware directly to RAM for fast iteration
-
-## USB CDC Firmware Update
-
-The bootloader supports firmware updates over USB CDC:
+You can also run pytest directly from `scripts/python/`:
 
 ```bash
-# Get bootloader status
-crispy-upload --port /dev/ttyACM0 status
-
-# Upload firmware to bank A (default)
-crispy-upload --port /dev/ttyACM0 upload firmware.bin
-
-# Upload firmware to bank B
-crispy-upload --port /dev/ttyACM0 upload firmware.bin --bank 1
-
-# Switch active bank
-crispy-upload --port /dev/ttyACM0 set-bank 1
-
-# Wipe all firmware and reset boot data
-crispy-upload --port /dev/ttyACM0 wipe
-
-# Reboot device
-crispy-upload --port /dev/ttyACM0 reboot
+cd scripts/python
+python -m pytest tests/test_integration.py -v --device /dev/ttyACM0
 ```
 
-**Entering update mode:**
-- Hold GP2 LOW during reset
-- Write magic value `0x0FDA7E00` to RAM address `0x2003BFF0` and reset
-- If no valid firmware in either bank, bootloader enters update mode automatically
+#### Environment Variables
 
-## Memory Layout
+| Variable            | Description                           | Example        |
+| ------------------- | ------------------------------------- | -------------- |
+| `CRISPY_DEVICE`     | Serial port of the bootloader         | `/dev/ttyACM0` |
+| `CRISPY_SKIP_BUILD` | Skip cargo build step (`1` to enable) | `1`            |
+| `CRISPY_SKIP_FLASH` | Skip SWD flashing (`1` to enable)     | `1`            |
 
-```
-Flash (2MB):
-  0x10000000  BOOT2 (256B)
-  0x10000100  Bootloader (64KB)
-  0x10010000  FW Bank A (768KB)
-  0x100D0000  FW Bank B (768KB)
-  0x10190000  BOOT_DATA (4KB)
+These work with both `test-integration.sh` and `pytest`. CLI flags (`--device`,
+`--skip-build`, `--skip-flash`) take precedence over environment variables.
 
-RAM (256KB):
-  0x20000000  Firmware code (192KB, copied by bootloader)
-  0x20030000  Firmware data/BSS/stack (48KB)
-  0x2003C000  Bootloader data/BSS/stack (16KB)
+#### CI Runner Example
+
+For a self-hosted runner with a board permanently connected:
+
+```bash
+export CRISPY_DEVICE=/dev/ttyACM0
+export CRISPY_SKIP_BUILD=1
+export CRISPY_SKIP_FLASH=1
+python -m pytest tests/test_integration.py -v
 ```
 
 ## License

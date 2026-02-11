@@ -8,7 +8,8 @@ A minimal A/B bootloader for RP2040 with USB CDC firmware update support.
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         Flash Layout (2MB)                          │
 ├─────────────────────────────────────────────────────────────────────┤
-│ 0x10000000 │ Bootloader (64KB)                                      │
+│ 0x10000000 │ BOOT2 (256B)                                           │
+│ 0x10000100 │ Bootloader (64KB)                                      │
 │ 0x10010000 │ Firmware Bank A (768KB)                                │
 │ 0x100D0000 │ Firmware Bank B (768KB)                                │
 │ 0x10190000 │ BootData (4KB)                                         │
@@ -17,33 +18,58 @@ A minimal A/B bootloader for RP2040 with USB CDC firmware update support.
 
 ## Documentation Index
 
-### Core Concepts
+### Guides
 
-- [Boot FSM](boot-fsm.md) - Boot bank selection finite state machine
+| Document | Description |
+|----------|-------------|
+| [Boot Bank Selection](boot-bank-selection.md) | A/B bank selection and rollback mechanism |
 
 ### Crates
 
 | Crate | Description |
 |-------|-------------|
 | `crispy-bootloader` | Main bootloader binary for RP2040 |
-| `crispy-common` | Shared types, protocol, and FSM logic |
+| `crispy-common` | Shared types, protocol, and flash utilities |
 | `crispy-upload` | Host CLI tool for firmware upload |
 | `crispy-fw-sample-rs` | Sample firmware in Rust |
 | `crispy-fw-sample-cpp` | Sample firmware in C++ |
+| `crispy-sdk-cpp` | C++ SDK for Crispy bootloader |
+
+## Prerequisites
+
+The build system uses `rust-objcopy` (from `cargo-binutils`) instead of `arm-none-eabi-objcopy`
+to convert ELF files to raw binaries. Install the required tools:
+
+```bash
+make install-tools
+```
+
+This installs:
+- `llvm-tools-preview` rustup component (provides the LLVM objcopy backend)
+- `cargo-binutils` (provides the `rust-objcopy` frontend)
 
 ## Quick Start
 
 ### Building
 
 ```bash
+# Show all available targets
+make help
+
 # Build everything
-make build
+make all
 
 # Build bootloader only
-cargo build -p crispy-bootloader --release --target thumbv6m-none-eabi
+make bootloader
 
 # Build upload tool
-cargo build -p crispy-upload --release
+make upload
+
+# Build .bin files
+make bootloader-bin firmware-bin
+
+# Build bootloader UF2 (for BOOTSEL flashing)
+make bootloader-uf2
 ```
 
 ### Flashing Bootloader
@@ -57,7 +83,7 @@ cp target/thumbv6m-none-eabi/release/crispy-bootloader.uf2 /media/$USER/RPI-RP2/
 
 ```bash
 # Upload to bank A
-crispy-upload --port /dev/ttyACM0 upload firmware.bin --bank 0 --version 1
+crispy-upload --port /dev/ttyACM0 upload crispy-fw-sample-rs.bin --bank 0 --version 1
 
 # Check status
 crispy-upload --port /dev/ttyACM0 status
@@ -121,16 +147,13 @@ Firmware can request update mode by:
 
 Firmware is copied from flash to RAM before execution:
 - Base address: `0x20000000`
-- Max size: ~240KB
+- Max size: 192KB
 
 ## Testing
 
 ```bash
 # Run all tests
 cargo test -p crispy-common --features std
-
-# Run specific test file
-cargo test -p crispy-common --features std --test boot_fsm_tests
 ```
 
 ## License
