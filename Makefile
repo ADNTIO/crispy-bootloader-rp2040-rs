@@ -107,8 +107,7 @@ test-integration: all
 
 # End-to-end deployment test (erase -> flash -> upload -> boot -> bank switch -> wipe)
 test-deployment: all firmware-cpp
-	cd scripts/python && . .venv/bin/activate && \
-		python -m pytest tests/test_deployment.py -v --tb=short
+	cd scripts/python && uv run python -m pytest tests/test_deployment.py -v --tb=short
 
 # Clean
 clean:

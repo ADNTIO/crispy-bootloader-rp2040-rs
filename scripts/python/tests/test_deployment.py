@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 import serial
 
-from conftest import (
+from tests.conftest import (
     CHIP,
     enter_update_mode_via_swd,
     find_firmware_port,
