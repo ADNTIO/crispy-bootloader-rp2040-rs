@@ -131,7 +131,7 @@ fn test_command_start_update_debug() {
 fn test_command_data_block_debug() {
     let cmd = Command::DataBlock {
         offset: 0,
-        data: vec![1, 2, 3, 4],
+        data: heapless::Vec::from_slice(&[1, 2, 3, 4]).unwrap(),
     };
     let debug = format!("{:?}", cmd);
     assert!(debug.contains("DataBlock"));

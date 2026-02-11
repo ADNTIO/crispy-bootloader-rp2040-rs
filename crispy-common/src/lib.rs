@@ -10,11 +10,6 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(feature = "std")]
-extern crate alloc;
-
-pub mod boot_fsm;
-pub mod cobs;
 pub mod protocol;
 
 // Flash operations for firmware (requires embedded feature)
@@ -31,44 +26,6 @@ pub use protocol::{FLASH_PAGE_SIZE, FLASH_SECTOR_SIZE, FW_BANK_SIZE, MAX_DATA_BL
 use embedded_hal::delay::DelayNs;
 #[cfg(feature = "embedded")]
 use embedded_hal::digital::OutputPin;
-#[cfg(feature = "embedded")]
-use rp2040_hal as hal;
-
-#[cfg(feature = "embedded")]
-pub type LedPin =
-    hal::gpio::Pin<hal::gpio::bank0::Gpio25, hal::gpio::FunctionSioOutput, hal::gpio::PullDown>;
-
-/// Initialize RP2040 board peripherals.
-///
-/// # Safety
-/// Uses `Peripherals::steal()` — caller must ensure exclusive peripheral access.
-#[cfg(feature = "embedded")]
-pub fn init_board() -> (hal::Timer, LedPin) {
-    let mut pac = unsafe { hal::pac::Peripherals::steal() };
-
-    let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);
-    let clocks = hal::clocks::init_clocks_and_plls(
-        12_000_000u32,
-        pac.XOSC,
-        pac.CLOCKS,
-        pac.PLL_SYS,
-        pac.PLL_USB,
-        &mut pac.RESETS,
-        &mut watchdog,
-    )
-    .unwrap();
-
-    let timer = hal::Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
-    let sio = hal::Sio::new(pac.SIO);
-    let pins = hal::gpio::Pins::new(
-        pac.IO_BANK0,
-        pac.PADS_BANK0,
-        sio.gpio_bank0,
-        &mut pac.RESETS,
-    );
-
-    (timer, pins.gpio25.into_push_pull_output())
-}
 
 /// Blink an LED a specified number of times.
 #[cfg(feature = "embedded")]
