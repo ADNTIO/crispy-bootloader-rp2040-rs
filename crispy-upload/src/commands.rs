@@ -212,3 +212,55 @@ pub fn reboot(transport: &mut Transport) -> Result<()> {
 
     Ok(())
 }
+
+// UF2 constants
+const UF2_MAGIC_START0: u32 = 0x0A324655;
+const UF2_MAGIC_START1: u32 = 0x9E5D5157;
+const UF2_MAGIC_END: u32 = 0x0AB16F30;
+const UF2_FLAG_FAMILY_ID: u32 = 0x00002000;
+const UF2_PAYLOAD_SIZE: usize = 256;
+
+/// Convert a raw binary file to UF2 format.
+pub fn bin2uf2(input: &Path, output: &Path, base_address: u32, family_id: u32) -> Result<()> {
+    let data = fs::read(input).with_context(|| format!("Failed to read {}", input.display()))?;
+
+    let num_blocks = data.len().div_ceil(UF2_PAYLOAD_SIZE);
+    let mut out = Vec::with_capacity(num_blocks * 512);
+
+    for i in 0..num_blocks {
+        let offset = i * UF2_PAYLOAD_SIZE;
+        let end = (offset + UF2_PAYLOAD_SIZE).min(data.len());
+        let chunk = &data[offset..end];
+
+        // 32-byte header
+        out.extend_from_slice(&UF2_MAGIC_START0.to_le_bytes());
+        out.extend_from_slice(&UF2_MAGIC_START1.to_le_bytes());
+        out.extend_from_slice(&UF2_FLAG_FAMILY_ID.to_le_bytes());
+        out.extend_from_slice(&(base_address + offset as u32).to_le_bytes());
+        out.extend_from_slice(&(UF2_PAYLOAD_SIZE as u32).to_le_bytes());
+        out.extend_from_slice(&(i as u32).to_le_bytes());
+        out.extend_from_slice(&(num_blocks as u32).to_le_bytes());
+        out.extend_from_slice(&family_id.to_le_bytes());
+
+        // 256-byte payload (zero-padded)
+        out.extend_from_slice(chunk);
+        out.resize(out.len() + UF2_PAYLOAD_SIZE - chunk.len(), 0);
+
+        // 220-byte padding
+        out.resize(out.len() + 512 - 32 - UF2_PAYLOAD_SIZE - 4, 0);
+
+        // 4-byte footer
+        out.extend_from_slice(&UF2_MAGIC_END.to_le_bytes());
+    }
+
+    fs::write(output, &out).with_context(|| format!("Failed to write {}", output.display()))?;
+
+    println!(
+        "UF2: {} ({} blocks, {} bytes)",
+        output.display(),
+        num_blocks,
+        data.len()
+    );
+
+    Ok(())
+}

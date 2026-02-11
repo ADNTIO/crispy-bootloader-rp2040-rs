@@ -4,13 +4,8 @@
     {
       "label": "Build All",
       "type": "shell",
-      "command": "cargo",
-      "args": [
-        "build",
-        "--target", "thumbv6m-none-eabi",
-        "-p", "crispy-bootloader",
-        "-p", "crispy-fw-sample-rs"
-      ],
+      "command": "make",
+      "args": ["all"],
       "group": {
         "kind": "build",
         "isDefault": true
@@ -22,28 +17,10 @@
       "problemMatcher": "$rustc"
     },
     {
-      "label": "Flash Combined",
+      "label": "Flash Bootloader",
       "type": "shell",
-      "command": "bash",
-      "args": [
-        "-lc",
-        "cargo build --target thumbv6m-none-eabi -p crispy-bootloader -p crispy-fw-sample-rs && ./scripts/build-combined.sh debug && probe-rs download --chip RP2040 --binary-format bin --base-address 0x10000000 target/thumbv6m-none-eabi/debug/combined.bin"
-      ],
-      "group": "build",
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated"
-      },
-      "problemMatcher": "$rustc"
-    },
-    {
-      "label": "Flash and Boot Combined",
-      "type": "shell",
-      "command": "bash",
-      "args": [
-        "-lc",
-        "cargo build --target thumbv6m-none-eabi -p crispy-bootloader -p crispy-fw-sample-rs && ./scripts/build-combined.sh debug && probe-rs download --chip RP2040 --binary-format bin --base-address 0x10000000 target/thumbv6m-none-eabi/debug/combined.bin && probe-rs reset --chip RP2040 && sleep 3"
-      ],
+      "command": "make",
+      "args": ["flash-bootloader"],
       "group": "build",
       "presentation": {
         "reveal": "always",

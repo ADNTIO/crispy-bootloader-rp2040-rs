@@ -5,7 +5,7 @@
 
 import pytest
 import zlib
-from crispy_protocol.crc32 import crc32, _CRC32_TABLE, _init_table
+from crispy_protocol.crc32 import crc32, _CRC32_TABLE
 
 
 class TestCrc32:

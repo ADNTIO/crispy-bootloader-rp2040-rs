@@ -15,10 +15,8 @@ Features tested:
 - Bank switching
 """
 
-import os
 import subprocess
 import time
-from pathlib import Path
 
 import pytest
 
@@ -86,11 +84,11 @@ class TestBuildArtifacts:
         bin_path = project_root / "target" / "firmware.bin"
 
         result = subprocess.run(
-            ["arm-none-eabi-objcopy", "-O", "binary", str(elf_path), str(bin_path)],
+            ["rust-objcopy", "-O", "binary", str(elf_path), str(bin_path)],
             capture_output=True,
             text=True,
         )
-        assert result.returncode == 0, f"objcopy failed: {result.stderr}"
+        assert result.returncode == 0, f"rust-objcopy failed: {result.stderr}"
         assert bin_path.exists(), "Firmware binary not created"
 
     def test_firmware_size(self, project_root):
@@ -393,31 +391,6 @@ class TestReboot:
 
         # Device will disconnect after reboot
         time.sleep(2)
-
-
-# Convenience function to run a full upload cycle
-def upload_firmware(transport, firmware_data: bytes, bank: int, version: int) -> bool:
-    """Helper to upload firmware to a bank."""
-    from crispy_protocol.crc32 import crc32
-    from crispy_protocol.protocol import AckStatus, Command
-
-    size = len(firmware_data)
-    checksum = crc32(firmware_data)
-
-    transport.send(Command.start_update(bank=bank, size=size, crc32=checksum, version=version))
-    if transport.receive().status != AckStatus.OK:
-        return False
-
-    offset = 0
-    while offset < size:
-        chunk = firmware_data[offset : offset + 1024]
-        transport.send(Command.data_block(offset=offset, data=chunk))
-        if transport.receive().status != AckStatus.OK:
-            return False
-        offset += len(chunk)
-
-    transport.send(Command.finish_update())
-    return transport.receive().status == AckStatus.OK
 
 
 if __name__ == "__main__":
