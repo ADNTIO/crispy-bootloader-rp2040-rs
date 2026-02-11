@@ -1,15 +1,21 @@
 [package]
 name = "crispy-bootloader"
 version = "0.2.0"
-edition = "2021"
-license = "MIT"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "A/B bootloader for the RP2040 with safe OTA updates via USB CDC"
+readme = "../README.md"
+keywords = ["bootloader", "rp2040", "raspberry-pi-pico", "embedded", "ota"]
+categories = ["embedded", "no-std", "hardware-support"]
 
 [[bin]]
 name = "crispy-bootloader"
 path = "src/main.rs"
 
 [dependencies]
-crispy-common = { path = "../crispy-common", features = ["embedded"] }
+crispy-common = { version = "0.2.0", path = "../crispy-common", features = ["embedded"] }
 rp2040-boot2 = "0.3"
 rp2040-hal = { version = "0.11", features = ["rt", "critical-section-impl"] }
 embedded-hal = "1.0.0"

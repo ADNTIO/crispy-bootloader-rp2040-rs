@@ -5,6 +5,8 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 license = "MIT"
+authors = ["ADNT Sàrl <info@adnt.io>"]
+repository = "https://github.com/ADNTIO/example-minimal-bootloader-rp2040-rs"
 
 [profile.release]
 opt-level = 2

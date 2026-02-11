@@ -1,11 +1,17 @@
 [package]
 name = "crispy-fw-sample-rs"
 version = "0.2.0"
-edition = "2021"
-license = "MIT"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Sample Rust firmware for the Crispy RP2040 A/B bootloader"
+readme = "../README.md"
+keywords = ["bootloader", "rp2040", "raspberry-pi-pico", "firmware", "embedded"]
+categories = ["embedded", "no-std", "hardware-support"]
 
 [dependencies]
-crispy-common = { path = "../crispy-common", features = ["embedded"] }
+crispy-common = { version = "0.2.0", path = "../crispy-common", features = ["embedded"] }
 rp2040-hal = { version = "0.11", features = ["rt", "critical-section-impl"] }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"

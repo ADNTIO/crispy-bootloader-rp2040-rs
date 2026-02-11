@@ -1,8 +1,14 @@
 [package]
 name = "crispy-common"
 version = "0.2.0"
-edition = "2021"
-license = "MIT"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Shared protocol and flash utilities for the Crispy RP2040 A/B bootloader"
+readme = "../README.md"
+keywords = ["bootloader", "rp2040", "raspberry-pi-pico", "embedded", "firmware"]
+categories = ["embedded", "no-std", "hardware-support"]
 
 [features]
 default = []
