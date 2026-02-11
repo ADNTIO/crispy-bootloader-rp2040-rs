@@ -23,17 +23,25 @@ jobs:
           targets: thumbv6m-none-eabi
           components: rustfmt, clippy
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Clippy (embedded)
-        run: cargo clippy --release -p crispy-bootloader -p crispy-fw-sample-rs --target $TARGET -- -D warnings
-
       - name: Install libudev
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
 
-      - name: Clippy (host)
-        run: cargo clippy --release -p crispy-upload -- -D warnings
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: make clippy
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run tests
+        run: make test
 
   build-firmware:
     name: Build Firmware
@@ -51,14 +59,8 @@ jobs:
           cargo install cargo-binutils
           sudo apt-get update && sudo apt-get install -y libudev-dev
 
-      - name: Build
-        run: cargo build --release -p crispy-bootloader -p crispy-fw-sample-rs --target $TARGET -p crispy-upload
-
-      - name: Create binaries
-        run: |
-          rust-objcopy -O binary target/$TARGET/release/crispy-bootloader target/$TARGET/release/crispy-bootloader.bin
-          rust-objcopy -O binary target/$TARGET/release/crispy-fw-sample-rs target/$TARGET/release/crispy-fw-sample-rs.bin
-          cargo run --release -p crispy-upload -- bin2uf2 target/$TARGET/release/crispy-bootloader.bin target/$TARGET/release/crispy-bootloader.uf2 --base-address 0x10000000
+      - name: Build all
+        run: make all
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
@@ -83,7 +85,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
 
       - name: Build
-        run: cargo build --release -p crispy-upload
+        run: make upload
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -110,7 +112,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [check, build-firmware, build-upload-linux, build-upload-windows]
+    needs: [check, test, build-firmware, build-upload-linux, build-upload-windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
