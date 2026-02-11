@@ -12,6 +12,7 @@ crispy-sdk-cpp/        # C++ SDK for Crispy bootloader
 crispy-common/         # Shared Rust crate (board init, flash operations)
 scripts/python/        # Python upload tool and library
 linker_scripts/        # Memory layouts for bootloader and firmware
+crispy-upload/         # Tool to manager the bootloader (upload, wipeout firmware, ..)
 ```
 
 ## Prerequisites
