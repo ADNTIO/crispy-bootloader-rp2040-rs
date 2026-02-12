@@ -28,7 +28,15 @@ pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_GENERIC_03H;
 fn main() -> ! {
     defmt::println!("Bootloader init");
 
-    let mut p = peripherals::init();
+    let mut p = match peripherals::init() {
+        Ok(p) => p,
+        Err(e) => {
+            defmt::error!("Failed to initialize peripherals: {:?}", e);
+            loop {
+                cortex_m::asm::wfi();
+            }
+        }
+    };
 
     crispy_common::blink(&mut p.led_pin, &mut p.timer, 3, 200);
     flash::init();

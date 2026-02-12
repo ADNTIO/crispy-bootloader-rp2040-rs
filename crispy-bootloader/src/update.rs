@@ -24,6 +24,7 @@ pub fn enter_update_mode(p: &mut Peripherals) -> ! {
 
     crispy_common::blink(&mut p.led_pin, &mut p.timer, 10, 50);
 
+    // SAFETY: This is the only place where USB is taken in the bootloader
     let mut usb = p.usb.take().expect("USB peripherals already taken");
 
     let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
@@ -35,7 +36,16 @@ pub fn enter_update_mode(p: &mut Peripherals) -> ! {
     ));
 
     peripherals::store_usb_bus(usb_bus);
-    let mut transport = UsbTransport::new(peripherals::usb_bus_ref());
+
+    let mut transport = match UsbTransport::new(peripherals::usb_bus_ref()) {
+        Ok(t) => t,
+        Err(e) => {
+            defmt::error!("Failed to initialize USB transport: {:?}", e);
+            loop {
+                cortex_m::asm::wfi();
+            }
+        }
+    };
 
     defmt::println!("USB CDC initialized, entering update loop");
     p.led_pin.set_high().ok();
