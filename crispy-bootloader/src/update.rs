@@ -11,50 +11,15 @@
 //! - Reboot: Restart the device
 
 use crate::flash;
-use crate::peripherals::{self, Peripherals};
 use crate::usb_transport::UsbTransport;
 use crispy_common::protocol::*;
-use embedded_hal::digital::OutputPin;
-use rp2040_hal as hal;
-use usb_device::class_prelude::UsbBusAllocator;
-
-/// Enter update mode: initialize USB and run the update loop.
-pub fn enter_update_mode(p: &mut Peripherals) -> ! {
-    defmt::println!("Update mode requested");
-
-    crispy_common::blink(&mut p.led_pin, &mut p.timer, 10, 50);
-
-    // SAFETY: This is the only place where USB is taken in the bootloader
-    let mut usb = p.usb.take().expect("USB peripherals already taken");
-
-    let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
-        usb.regs,
-        usb.dpram,
-        usb.clock,
-        true,
-        &mut usb.resets,
-    ));
-
-    peripherals::store_usb_bus(usb_bus);
-
-    let mut transport = match UsbTransport::new(peripherals::usb_bus_ref()) {
-        Ok(t) => t,
-        Err(e) => {
-            defmt::error!("Failed to initialize USB transport: {:?}", e);
-            loop {
-                cortex_m::asm::wfi();
-            }
-        }
-    };
-
-    defmt::println!("USB CDC initialized, entering update loop");
-    p.led_pin.set_high().ok();
-
-    run_update_mode(&mut transport)
-}
 
 /// Update state machine states.
-enum UpdateState {
+pub enum UpdateState {
+    /// Inactive - not in update mode
+    Inactive,
+    /// Initializing USB
+    Initializing,
     /// Waiting for a new update to start.
     Idle,
     /// Actively receiving firmware data.
@@ -68,21 +33,8 @@ enum UpdateState {
     },
 }
 
-/// Run the update mode loop. Does not return (reboot via SCB::sys_reset).
-pub fn run_update_mode(transport: &mut UsbTransport) -> ! {
-    let mut state = UpdateState::Idle;
-
-    loop {
-        transport.poll();
-
-        if let Some(cmd) = transport.try_receive() {
-            state = handle_command(transport, state, cmd);
-        }
-    }
-}
-
 /// Dispatch a command to its handler.
-fn handle_command(transport: &mut UsbTransport, state: UpdateState, cmd: Command) -> UpdateState {
+pub fn dispatch_command(transport: &mut UsbTransport, state: UpdateState, cmd: Command) -> UpdateState {
     match cmd {
         Command::GetStatus => handle_get_status(transport, state),
         Command::StartUpdate {
@@ -103,6 +55,8 @@ fn handle_command(transport: &mut UsbTransport, state: UpdateState, cmd: Command
 fn handle_get_status(transport: &mut UsbTransport, state: UpdateState) -> UpdateState {
     let bd = flash::read_boot_data();
     let boot_state = match &state {
+        UpdateState::Inactive => BootState::UpdateMode,
+        UpdateState::Initializing => BootState::UpdateMode,
         UpdateState::Idle => BootState::UpdateMode,
         UpdateState::Receiving { .. } => BootState::Receiving,
     };

@@ -350,6 +350,7 @@ name = "crispy-common"
 version = "0.2.0"
 dependencies = [
  "cortex-m",
+ "defmt",
  "embedded-hal 1.0.0",
  "heapless 0.8.0",
  "rp2040-hal",

@@ -11,6 +11,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod protocol;
+pub mod service;
 
 // Flash operations for firmware (requires embedded feature)
 #[cfg(feature = "embedded")]

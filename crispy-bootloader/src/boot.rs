@@ -256,8 +256,8 @@ unsafe fn jump_to_firmware(initial_sp: u32, reset_vector: u32) -> ! {
 }
 
 /// Run the normal boot sequence.
-/// If no valid firmware is found, enters update mode.
-pub fn run_normal_boot(p: &mut crate::peripherals::Peripherals) -> ! {
+/// If no valid firmware is found, returns to let services handle it.
+pub fn run_normal_boot(p: &mut crate::peripherals::Peripherals) {
     use embedded_hal::delay::DelayNs;
 
     defmt::println!("Normal boot path");
@@ -275,10 +275,10 @@ pub fn run_normal_boot(p: &mut crate::peripherals::Peripherals) -> ! {
         bd.is_valid()
     );
 
-    // If BootData is valid but no firmware uploaded (both sizes 0), enter update mode
+    // If BootData is valid but no firmware uploaded (both sizes 0), return to main loop
     if bd.is_valid() && bd.size_a == 0 && bd.size_b == 0 {
-        defmt::println!("No firmware uploaded, entering update mode");
-        crate::update::enter_update_mode(p);
+        defmt::println!("No firmware uploaded, staying in bootloader");
+        return;
     }
 
     let (flash_addr, updated_bd) = select_boot_bank(&bd, &layout);
@@ -290,8 +290,8 @@ pub fn run_normal_boot(p: &mut crate::peripherals::Peripherals) -> ! {
 
     let bank_label = if flash_addr == layout.fw_a { "A" } else { "B" };
     if validate_bank(flash_addr).is_none() {
-        defmt::println!("No valid firmware in any bank, entering update mode");
-        crate::update::enter_update_mode(p);
+        defmt::println!("No valid firmware in any bank, staying in bootloader");
+        return;
     }
 
     defmt::println!(
