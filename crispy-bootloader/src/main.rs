@@ -81,7 +81,12 @@ fn main() -> ! {
 
         // Check for boot request
         if event_bus.has_event(|e| matches!(e, Event::RequestBoot)) {
+            event_bus.consume(|e| matches!(e, Event::RequestBoot));
             boot::run_normal_boot(&mut p);
+            // run_normal_boot only returns when no valid firmware is found
+            // → fall back to update mode so the device enumerates on USB
+            defmt::println!("No bootable firmware, entering update mode");
+            event_bus.publish(Event::RequestUpdate);
         }
     }
 }

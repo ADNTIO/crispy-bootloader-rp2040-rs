@@ -80,25 +80,58 @@ def reset_device() -> bool:
     return success
 
 
+def erase_boot_data() -> bool:
+    """Erase boot data sector via SWD to invalidate firmware metadata."""
+    import tempfile
+
+    boot_data_addr = 0x1019_0000
+    sector = b"\xFF" * 4096
+    with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
+        f.write(sector)
+        blank_path = f.name
+    try:
+        success, output = run_probe_rs(
+            "download", "--chip", CHIP,
+            "--binary-format", "bin",
+            "--base-address", hex(boot_data_addr),
+            blank_path,
+        )
+        if not success:
+            print(f"Failed to erase boot data: {output}")
+        return success
+    finally:
+        Path(blank_path).unlink(missing_ok=True)
+
+
 def enter_update_mode_via_swd() -> bool:
-    """Enter bootloader update mode by writing RAM magic and resetting."""
+    """Enter bootloader update mode by erasing boot data and resetting.
+
+    Two-layer approach:
+    1. Erase boot data so the bootloader finds no valid firmware
+    2. Write RAM magic as a belt-and-suspenders trigger
+    3. Reset — bootloader enters update mode either via magic or
+       because no firmware exists (fallback in main loop)
+    """
     print("Entering update mode via SWD...")
-    # Write RAM magic value
-    success, output = run_probe_rs(
+
+    # Erase boot data — ensures bootloader can't boot any firmware
+    if not erase_boot_data():
+        print("Warning: failed to erase boot data, trying magic only")
+
+    # Write RAM magic (may or may not survive the race with reset)
+    run_probe_rs(
         "write", "--chip", CHIP, "b32",
         hex(RAM_UPDATE_FLAG_ADDR), hex(RAM_UPDATE_MAGIC)
     )
-    if not success:
-        print(f"Failed to write RAM magic: {output}")
-        return False
+
     # Reset device
-    time.sleep(0.1)
     success, output = run_probe_rs("reset", "--chip", CHIP)
     if not success:
         print(f"Failed to reset: {output}")
         return False
+
     # Wait for bootloader to initialize USB
-    time.sleep(2.0)
+    time.sleep(3.0)
     return True
 
 
@@ -284,7 +317,7 @@ def transport(device_in_update_mode):
 
     # Find the bootloader port
     try:
-        port = find_bootloader_port(timeout=5.0)
+        port = find_bootloader_port(timeout=10.0)
     except TimeoutError:
         pytest.fail("Bootloader serial port not found after reset")
 

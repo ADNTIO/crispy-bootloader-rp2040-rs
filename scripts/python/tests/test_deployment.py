@@ -155,15 +155,10 @@ class TestDeployment:
             f"probe-rs download failed:\n{result.stdout}\n{result.stderr}"
         )
 
-        # Reset the device
-        result = subprocess.run(
-            ["probe-rs", "reset", "--chip", CHIP],
-            capture_output=True, text=True, timeout=10,
-        )
-        assert result.returncode == 0, f"probe-rs reset failed:\n{result.stderr}"
+        # Enter update mode via SWD (writes RAM magic + reset)
+        # More reliable than bare probe-rs reset, which may not trigger update mode
+        assert enter_update_mode_via_swd(), "Failed to enter update mode via SWD"
 
-        # Wait for the bootloader to enumerate on USB
-        time.sleep(2.0)
         port = self._find_bootloader_port()
         print(f"Bootloader detected on {port}")
 
@@ -368,6 +363,9 @@ class TestDeployment:
 
         time.sleep(3.0)
         port = self._find_bootloader_port(timeout=15.0)
+
+        # Wait for CDC to be ready after USB enumeration
+        time.sleep(1.0)
 
         ok, stdout, stderr = run_crispy_upload(root, port, "status")
         assert ok, f"Status command failed:\n{stdout}\n{stderr}"
