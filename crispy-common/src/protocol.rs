@@ -11,6 +11,45 @@ extern crate alloc;
 
 use serde::{Deserialize, Serialize};
 
+const SEMVER_COMPONENT_MASK: u32 = 0x03FF;
+const SEMVER_MINOR_SHIFT: u32 = 10;
+const SEMVER_MAJOR_SHIFT: u32 = 20;
+
+/// Packs `major.minor.patch` into a compact u32.
+///
+/// Each component must be in `[0, 1023]`.
+pub fn pack_semver(major: u32, minor: u32, patch: u32) -> Option<u32> {
+    if major > SEMVER_COMPONENT_MASK
+        || minor > SEMVER_COMPONENT_MASK
+        || patch > SEMVER_COMPONENT_MASK
+    {
+        return None;
+    }
+
+    Some((major << SEMVER_MAJOR_SHIFT) | (minor << SEMVER_MINOR_SHIFT) | patch)
+}
+
+/// Unpacks a compact semver value produced by [`pack_semver`].
+pub fn unpack_semver(value: u32) -> (u32, u32, u32) {
+    let major = (value >> SEMVER_MAJOR_SHIFT) & SEMVER_COMPONENT_MASK;
+    let minor = (value >> SEMVER_MINOR_SHIFT) & SEMVER_COMPONENT_MASK;
+    let patch = value & SEMVER_COMPONENT_MASK;
+    (major, minor, patch)
+}
+
+/// Parses a strict `X.Y.Z` semver string and packs it as `u32`.
+pub fn parse_semver(version: &str) -> Option<u32> {
+    let mut parts = version.split('.');
+    let major = parts.next()?.parse::<u32>().ok()?;
+    let minor = parts.next()?.parse::<u32>().ok()?;
+    let patch = parts.next()?.parse::<u32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+
+    pack_semver(major, minor, patch)
+}
+
 // --- Flash layout constants ---
 
 pub const FLASH_BASE: u32 = 0x1000_0000;
@@ -140,6 +179,8 @@ pub enum Response {
         version_a: u32,
         version_b: u32,
         state: BootState,
+        #[serde(default)]
+        bootloader_version: Option<u32>,
     },
 }
 

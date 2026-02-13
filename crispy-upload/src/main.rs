@@ -5,7 +5,7 @@
 //!
 //! Usage:
 //!   crispy-upload --port /dev/ttyACM0 status
-//!   crispy-upload --port /dev/ttyACM0 upload firmware.bin --bank 0 --version 1
+//!   crispy-upload --port /dev/ttyACM0 upload firmware.bin --bank 0 --fw-version 1
 //!   crispy-upload --port /dev/ttyACM0 reboot
 
 mod cli;
