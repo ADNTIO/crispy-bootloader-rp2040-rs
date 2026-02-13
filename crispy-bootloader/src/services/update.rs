@@ -27,7 +27,6 @@ enum FsmAction {
     None,
     InitializeUsb,
     PumpCommandQueue,
-    IgnoreCommands,
 }
 
 /// Result of one pure FSM transition step.
@@ -126,10 +125,6 @@ impl UpdateService {
                 next_state: state,
                 action: FsmAction::PumpCommandQueue,
             },
-            (UpdateState::WritingFlash { .. }, _) => FsmStep {
-                next_state: state,
-                action: FsmAction::IgnoreCommands,
-            },
         }
     }
 
@@ -149,10 +144,6 @@ impl UpdateService {
             FsmAction::None => state,
             FsmAction::InitializeUsb => Self::initialize_usb(ctx),
             FsmAction::PumpCommandQueue => Self::process_pending_command(ctx, state),
-            FsmAction::IgnoreCommands => {
-                defmt::trace!("Update: WritingFlash, ignoring commands");
-                state
-            }
         }
     }
 
