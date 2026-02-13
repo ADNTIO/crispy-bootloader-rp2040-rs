@@ -5,6 +5,9 @@
 This project is built with an AI coding assistant. A human drives the intent, the AI
 helps write the code, and a Raspberry Pi Pico decides if it actually works.
 
+This is a human-in-the-loop AI-assisted development approach: the AI supports
+implementation, but final technical decisions remain with a human.
+
 Nothing gets merged into `main` unless it runs on hardware. Period.
 
 From there, we iterate: clean up the code, improve the architecture, refactor —
@@ -95,3 +98,9 @@ with AI on embedded systems.
 
 If you spot something wrong, something ugly, or something that could be done better:
 please say so. Issues, PRs, comments — all welcome. Criticism is how this gets better.
+
+## Concept Reference
+
+For a compact definition of the model used in this project, see:
+
+- [AI-assisted development concept](ai-assisted-development.md)

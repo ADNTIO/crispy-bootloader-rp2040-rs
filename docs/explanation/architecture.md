@@ -183,3 +183,11 @@ All changes are:
 - RP2040 Datasheet: Flash controller behavior, interrupt handling
 - `rp2040-hal` Documentation: USB CDC implementation
 - `heapless` Documentation: Lock-free queue patterns
+
+## Architecture Decisions
+
+Formal decision records are tracked in:
+
+- [Architecture decisions index](architecture-decisions.md)
+- [ADR-0002: RAM-buffered upload before flash write](adr/ADR-0002-ram-buffered-upload.md)
+- [ADR-0003: Cooperative services + event bus](adr/ADR-0003-cooperative-services-and-events.md)

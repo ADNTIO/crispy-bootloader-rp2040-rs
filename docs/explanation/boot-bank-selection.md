@@ -222,3 +222,7 @@ Bank A: CRC valid
 
 Result: Boot Bank A, attempts=6 (no rollback due to confirmed=1)
 ```
+
+## Related ADR
+
+- [ADR-0001: Dual-bank firmware update model](adr/ADR-0001-dual-bank-update-model.md)
