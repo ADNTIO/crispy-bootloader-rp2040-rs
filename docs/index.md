@@ -22,6 +22,7 @@ A minimal A/B bootloader for RP2040 with USB CDC firmware update support.
 
 | Document | Description |
 |----------|-------------|
+| [Development Methodology](DEVELOPMENT_METHODOLOGY.md) | AI-assisted, test-driven, iterative approach |
 | [Boot Bank Selection](boot-bank-selection.md) | A/B bank selection and rollback mechanism |
 
 ### Crates
