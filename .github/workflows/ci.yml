@@ -13,7 +13,7 @@ env:
 
 jobs:
   check:
-    name: Format + Clippy
+    name: Format + Clippy + Markdown
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,10 @@ jobs:
           targets: thumbv6m-none-eabi
           components: rustfmt, clippy
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install libudev
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
 
@@ -31,6 +35,9 @@ jobs:
 
       - name: Clippy
         run: make clippy
+
+      - name: Markdown lint
+        run: make lint-md
 
   test:
     name: Unit Tests

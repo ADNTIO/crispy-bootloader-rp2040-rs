@@ -4,7 +4,7 @@ EMBEDDED_TARGET := thumbv6m-none-eabi
 CHIP := RP2040
 RELEASE_DIR := target/$(EMBEDDED_TARGET)/release
 
-.PHONY: help all embedded host bootloader firmware firmware-cpp upload clean clippy test test-integration test-deployment
+.PHONY: help all embedded host bootloader firmware firmware-cpp upload clean clippy lint-md test test-integration test-deployment
 .PHONY: bootloader-bin firmware-bin firmware-cpp-bin bootloader-uf2
 .PHONY: flash-bootloader run-bootloader
 .PHONY: install-probe-rs install-tools update-mode reset
@@ -31,6 +31,7 @@ help:
 	@echo ""
 	@echo "Quality targets:"
 	@echo "  clippy           Run clippy lints"
+	@echo "  lint-md          Run Markdown linter (markdownlint-cli2)"
 	@echo "  test             Run unit tests"
 	@echo "  test-integration Run hardware integration tests (needs SWD + board)"
 	@echo "  test-deployment  Run end-to-end deployment test (needs SWD + board)"
@@ -95,6 +96,9 @@ run-bootloader:
 clippy:
 	cargo clippy -p crispy-upload -- -D warnings
 	cargo clippy -p crispy-bootloader -p crispy-fw-sample-rs --target $(EMBEDDED_TARGET) -- -D warnings
+
+lint-md:
+	npx --yes markdownlint-cli2
 
 # Tests
 test:
