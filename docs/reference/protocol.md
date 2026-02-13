@@ -23,7 +23,16 @@ Defined in `crispy-common/src/protocol.rs`.
 ## Responses
 
 - `Ack(AckStatus)`
-- `Status { active_bank, version_a, version_b, state }`
+- `Status { active_bank, version_a, version_b, state, bootloader_version? }`
+
+`bootloader_version` is an optional packed semantic version (`major.minor.patch`)
+encoded as a `u32`:
+
+- `major = (value >> 20) & 0x03FF`
+- `minor = (value >> 10) & 0x03FF`
+- `patch = value & 0x03FF`
+
+Older bootloader builds may omit this field; host tools should handle its absence.
 
 ## AckStatus
 

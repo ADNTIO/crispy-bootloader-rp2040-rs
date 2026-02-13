@@ -27,12 +27,27 @@ except ImportError:
 from crispy_protocol import Transport, crc32
 from crispy_protocol.transport import TransportError, UploadError
 
+_SEMVER_MASK = 0x03FF
+_SEMVER_MINOR_SHIFT = 10
+_SEMVER_MAJOR_SHIFT = 20
+
+
+def _format_packed_semver(value: int) -> str:
+    major = (value >> _SEMVER_MAJOR_SHIFT) & _SEMVER_MASK
+    minor = (value >> _SEMVER_MINOR_SHIFT) & _SEMVER_MASK
+    patch = value & _SEMVER_MASK
+    return f"{major}.{minor}.{patch}"
+
 
 def cmd_status(transport: Transport):
     """Get bootloader status."""
     status = transport.get_status()
 
     print("Bootloader Status:")
+    if status.bootloader_version is not None:
+        print(f"  Bootloader:  {_format_packed_semver(status.bootloader_version)}")
+    else:
+        print("  Bootloader:  unknown")
     print(f"  Active bank: {status.active_bank} ({status.active_bank_name})")
     print(f"  Version A:   {status.version_a}")
     print(f"  Version B:   {status.version_b}")

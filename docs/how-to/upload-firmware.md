@@ -24,6 +24,8 @@ Artifact:
 cargo run --release -p crispy-upload -- --port /dev/ttyACM0 status
 ```
 
+The status output includes bootloader version (when available), active bank, and bank firmware versions.
+
 ## 2. Upload to a bank
 
 Bank A (`0`):
@@ -31,7 +33,7 @@ Bank A (`0`):
 ```bash
 cargo run --release -p crispy-upload -- --port /dev/ttyACM0 upload \
   target/thumbv6m-none-eabi/release/crispy-fw-sample-rs.bin \
-  --bank 0 --version 1
+  --bank 0 --fw-version 1
 ```
 
 Bank B (`1`):
@@ -39,8 +41,10 @@ Bank B (`1`):
 ```bash
 cargo run --release -p crispy-upload -- --port /dev/ttyACM0 upload \
   target/thumbv6m-none-eabi/release/crispy-fw-sample-rs.bin \
-  --bank 1 --version 1
+  --bank 1 --fw-version 1
 ```
+
+`--version` is still accepted as an alias for backward compatibility, but `--fw-version` (`-V`) is preferred.
 
 ## 3. Reboot into selected bank
 

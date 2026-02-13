@@ -4,9 +4,9 @@
 //! Unit tests for protocol types and constants.
 
 use crispy_common::protocol::{
-    AckStatus, BootState, Command, Response, BOOT_DATA_ADDR, FLASH_BASE, FLASH_PAGE_SIZE,
-    FLASH_SECTOR_SIZE, FW_A_ADDR, FW_BANK_SIZE, FW_B_ADDR, MAX_DATA_BLOCK_SIZE,
-    RAM_UPDATE_FLAG_ADDR, RAM_UPDATE_MAGIC,
+    pack_semver, parse_semver, unpack_semver, AckStatus, BootState, Command, Response,
+    BOOT_DATA_ADDR, FLASH_BASE, FLASH_PAGE_SIZE, FLASH_SECTOR_SIZE, FW_A_ADDR, FW_BANK_SIZE,
+    FW_B_ADDR, MAX_DATA_BLOCK_SIZE, RAM_UPDATE_FLAG_ADDR, RAM_UPDATE_MAGIC,
 };
 
 // --- Flash layout constants tests ---
@@ -179,8 +179,23 @@ fn test_response_status_debug() {
         version_a: 1,
         version_b: 2,
         state: BootState::Idle,
+        bootloader_version: Some(pack_semver(1, 2, 3).unwrap()),
     };
     let debug = format!("{:?}", resp);
     assert!(debug.contains("Status"));
     assert!(debug.contains("Idle"));
+}
+
+#[test]
+fn test_semver_pack_unpack_roundtrip() {
+    let packed = pack_semver(1, 2, 3).unwrap();
+    let (major, minor, patch) = unpack_semver(packed);
+    assert_eq!((major, minor, patch), (1, 2, 3));
+}
+
+#[test]
+fn test_semver_parse() {
+    let packed = parse_semver("1.2.3").unwrap();
+    let (major, minor, patch) = unpack_semver(packed);
+    assert_eq!((major, minor, patch), (1, 2, 3));
 }

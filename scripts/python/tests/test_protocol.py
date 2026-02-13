@@ -110,6 +110,7 @@ class TestStatusResponse:
         assert resp.version_a == 5
         assert resp.version_b == 3
         assert resp.state == BootState.UPDATE_MODE
+        assert resp.bootloader_version is None
 
 
 class TestFrame:
@@ -300,6 +301,27 @@ class TestDecodeResponse:
         assert resp.version_a == 5
         assert resp.version_b == 3
         assert resp.state == BootState.UPDATE_MODE
+        assert resp.bootloader_version is None
+
+    def test_decode_status_response_with_bootloader_version(self):
+        """Decode Status response with bootloader semver payload."""
+        from crispy_protocol.cobs import cobs_encode
+        from crispy_protocol.varint import encode_varint
+
+        # packed semver(1,2,3): (1<<20) | (2<<10) | 3
+        packed_semver = (1 << 20) | (2 << 10) | 3
+        raw = (
+            bytes([1, 0])
+            + encode_varint(5)
+            + encode_varint(3)
+            + bytes([BootState.UPDATE_MODE])
+            + encode_varint(packed_semver)
+        )
+        framed = cobs_encode(raw) + b"\x00"
+
+        resp = decode_response(framed)
+        assert isinstance(resp, StatusResponse)
+        assert resp.bootloader_version == packed_semver
 
     def test_decode_status_bank_b(self):
         """Decode Status response for bank B."""

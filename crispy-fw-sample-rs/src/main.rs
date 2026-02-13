@@ -4,6 +4,7 @@
 #![no_std]
 #![no_main]
 
+use core::fmt::Write;
 use crispy_common::flash;
 use crispy_common::protocol::BootData;
 use defmt_rtt as _;
@@ -14,6 +15,7 @@ use rp2040_hal as hal;
 use rp2040_hal::usb::UsbBus;
 use usb_device::class_prelude::UsbBusAllocator;
 use usb_device::prelude::*;
+use usb_device::UsbError;
 use usbd_serial::SerialPort;
 
 defmt::timestamp!("{=u64:us}", { 0 });
@@ -29,15 +31,67 @@ fn usb_bus_ref() -> &'static UsbBusAllocator<UsbBus> {
 
 const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-fn print_welcome(serial: &mut SerialPort<UsbBus>) {
-    let _ = serial.write(b"\r\n");
-    let _ = serial.write(b"+======================================+\r\n");
-    let _ = serial.write(b"|   Crispy Firmware Sample (Rust)      |\r\n");
-    let _ = serial.write(b"|   Version: ");
-    let _ = serial.write(FW_VERSION.as_bytes());
-    let _ = serial.write(b"                        |\r\n");
-    let _ = serial.write(b"+======================================+\r\n");
-    let _ = serial.write(b"Type 'help' for available commands.\r\n> ");
+struct BufWriter<'b> {
+    buf: &'b mut [u8],
+    pos: usize,
+}
+
+impl<'b> Write for BufWriter<'b> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let bytes = s.as_bytes();
+        let remaining = self.buf.len().saturating_sub(self.pos);
+        let to_write = bytes.len().min(remaining);
+        self.buf[self.pos..self.pos + to_write].copy_from_slice(&bytes[..to_write]);
+        self.pos += to_write;
+        Ok(())
+    }
+}
+
+fn write_serial_all(
+    usb_dev: &mut UsbDevice<UsbBus>,
+    serial: &mut SerialPort<UsbBus>,
+    mut data: &[u8],
+) {
+    let mut stalled = 0u32;
+
+    while !data.is_empty() {
+        usb_dev.poll(&mut [&mut *serial]);
+        match serial.write(data) {
+            Ok(0) => {
+                stalled += 1;
+            }
+            Ok(written) => {
+                data = &data[written..];
+                stalled = 0;
+            }
+            Err(UsbError::WouldBlock) => {
+                stalled += 1;
+            }
+            Err(_) => break,
+        }
+
+        if stalled > 1000 {
+            break;
+        }
+    }
+}
+
+fn print_welcome(usb_dev: &mut UsbDevice<UsbBus>, serial: &mut SerialPort<UsbBus>) {
+    let mut buf = [0u8; 256];
+    let len = {
+        let mut writer = BufWriter {
+            buf: &mut buf,
+            pos: 0,
+        };
+        let _ = write!(
+            writer,
+            "\r\n+======================================+\r\n|   Crispy Firmware Sample (Rust)      |\r\n|   Version: {:<26}|\r\n+======================================+\r\nType 'help' for available commands.\r\n> ",
+            FW_VERSION,
+        );
+        writer.pos
+    };
+
+    write_serial_all(usb_dev, serial, &buf[..len]);
 }
 
 /// Process a received command line and return a response.
@@ -82,24 +136,6 @@ fn process_command(line: &str, serial: &mut SerialPort<UsbBus>) -> bool {
 }
 
 fn format_status(bd: &BootData, buf: &mut [u8]) -> usize {
-    use core::fmt::Write;
-
-    struct BufWriter<'b> {
-        buf: &'b mut [u8],
-        pos: usize,
-    }
-
-    impl<'b> Write for BufWriter<'b> {
-        fn write_str(&mut self, s: &str) -> core::fmt::Result {
-            let bytes = s.as_bytes();
-            let remaining = self.buf.len() - self.pos;
-            let to_write = bytes.len().min(remaining);
-            self.buf[self.pos..self.pos + to_write].copy_from_slice(&bytes[..to_write]);
-            self.pos += to_write;
-            Ok(())
-        }
-    }
-
     let mut writer = BufWriter { buf, pos: 0 };
     let _ = write!(
         writer,
@@ -191,7 +227,7 @@ fn main() -> ! {
 
         // Print welcome when terminal connects (DTR set)
         if serial.dtr() && !welcome_printed {
-            print_welcome(&mut serial);
+            print_welcome(&mut usb_dev, &mut serial);
             welcome_printed = true;
         } else if !serial.dtr() {
             welcome_printed = false;

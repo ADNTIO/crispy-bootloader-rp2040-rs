@@ -14,6 +14,8 @@ use crate::flash;
 use crate::usb_transport::UsbTransport;
 use crispy_common::protocol::*;
 
+const BOOTLOADER_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// Maximum firmware size that can be buffered in RAM
 /// We use the firmware RAM region (0x20000000 - 0x20030000, 192KB) which is
 /// unused during bootloader operation.
@@ -89,6 +91,7 @@ fn handle_get_status(transport: &mut UsbTransport, state: UpdateState) -> Update
         version_a: bd.version_a,
         version_b: bd.version_b,
         state: boot_state,
+        bootloader_version: parse_semver(BOOTLOADER_VERSION),
     });
     defmt::println!("handle_get_status: send returned {}", success);
     state

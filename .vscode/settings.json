@@ -7,5 +7,6 @@
   },
   "cortex-debug.openocdPath": "openocd",
   "cortex-debug.gdbPath": "gdb-multiarch",
-  "cortex-debug.armToolchainPath": ""
+  "cortex-debug.armToolchainPath": "",
+  "cmake.sourceDirectory": "/home/fmn/workspace/example-minimal-bootloader-rp2040-rs/crispy-fw-sample-cpp"
 }

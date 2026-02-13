@@ -10,7 +10,7 @@ with the bootloader over USB CDC.
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Union
+from typing import Optional, Union
 
 from .cobs import cobs_encode, cobs_decode
 from .varint import encode_varint, decode_varint
@@ -113,6 +113,7 @@ class StatusResponse:
     version_a: int
     version_b: int
     state: BootState
+    bootloader_version: Optional[int] = None
     type: int = Response.TYPE_STATUS
 
     @property
@@ -212,12 +213,18 @@ def decode_response(data: bytes) -> ResponseType:
         if offset >= len(decoded):
             raise ValueError("Truncated Status response")
         state = BootState(decoded[offset])
+        offset += 1
+
+        bootloader_version = None
+        if offset < len(decoded):
+            bootloader_version, offset = decode_varint(decoded, offset)
 
         return StatusResponse(
             active_bank=active_bank,
             version_a=version_a,
             version_b=version_b,
             state=state,
+            bootloader_version=bootloader_version,
         )
 
     else:

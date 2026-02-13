@@ -25,6 +25,7 @@ Output:
 
 ```text
 Bootloader Status:
+  Bootloader:  1.2.3
   Active bank: 0 (A)
   Version A:   5
   Version B:   4
@@ -74,6 +75,12 @@ from crispy_protocol import Transport
 with Transport("/dev/ttyACM0") as t:
     # Get bootloader status
     status = t.get_status()
+    if status.bootloader_version is not None:
+        packed = status.bootloader_version
+        major = (packed >> 20) & 0x03FF
+        minor = (packed >> 10) & 0x03FF
+        patch = packed & 0x03FF
+        print(f"Bootloader: {major}.{minor}.{patch}")
     print(f"Active bank: {status.active_bank_name}")
     print(f"Version A: {status.version_a}")
     print(f"Version B: {status.version_b}")
@@ -171,6 +178,9 @@ The bootloader uses a binary protocol with:
 | `BAD_COMMAND` | Invalid command |
 | `BAD_STATE` | Command not valid in current state |
 | `BANK_INVALID` | Invalid bank number |
+
+`Status` responses may include an optional packed bootloader semver (`bootloader_version`).
+Older bootloader versions may omit this field.
 
 ## Entering Bootloader Mode
 

@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use anyhow::{bail, Result};
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 
 use crate::commands;
 use crate::transport::Transport;
@@ -15,7 +15,13 @@ use crate::transport::Transport;
 #[derive(Parser)]
 #[command(name = "crispy-upload")]
 #[command(about = "Firmware upload tool for crispy-bootloader")]
+#[command(version)]
+#[command(disable_version_flag = true)]
 pub struct Cli {
+    /// Print version
+    #[arg(short = 'v', long = "version", action = ArgAction::Version)]
+    _version: Option<bool>,
+
     /// Serial port (e.g., /dev/ttyACM0)
     #[arg(short, long)]
     pub port: Option<String>,
@@ -41,7 +47,12 @@ pub enum Commands {
         bank: u8,
 
         /// Firmware version number
-        #[arg(short, long, default_value = "1")]
+        #[arg(
+            short = 'V',
+            long = "fw-version",
+            alias = "version",
+            default_value = "1"
+        )]
         version: u32,
     },
 

@@ -11,7 +11,7 @@ use anyhow::{bail, Context, Result};
 use crc::{Crc, CRC_32_ISO_HDLC};
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crispy_common::protocol::{AckStatus, Command, Response};
+use crispy_common::protocol::{unpack_semver, AckStatus, Command, Response};
 use crispy_common::MAX_DATA_BLOCK_SIZE;
 
 use crate::transport::Transport;
@@ -29,8 +29,15 @@ pub fn status(transport: &mut Transport) -> Result<()> {
             version_a,
             version_b,
             state,
+            bootloader_version,
         } => {
             println!("Bootloader Status:");
+            if let Some(version) = bootloader_version {
+                let (major, minor, patch) = unpack_semver(version);
+                println!("  Bootloader:  {}.{}.{}", major, minor, patch);
+            } else {
+                println!("  Bootloader:  unknown");
+            }
             println!(
                 "  Active bank: {} ({})",
                 active_bank,

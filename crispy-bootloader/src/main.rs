@@ -24,6 +24,8 @@ defmt::timestamp!("{=u64:us}", { 0 });
 
 use cortex_m_rt::entry;
 
+const BOOTLOADER_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[unsafe(link_section = ".boot2")]
 #[used]
 pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_GENERIC_03H;
@@ -50,7 +52,7 @@ impl ServiceType {
 
 #[entry]
 fn main() -> ! {
-    defmt::println!("Bootloader starting");
+    defmt::println!("Bootloader starting v{}", BOOTLOADER_VERSION);
 
     let mut p = init_hardware();
 

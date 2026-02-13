@@ -13,3 +13,9 @@ dependencies = [
 
 [tool.uv]
 dev-dependencies = []
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests requiring RP2040 hardware via SWD/USB",
+    "deployment: end-to-end deployment workflow tests on hardware",
+]
