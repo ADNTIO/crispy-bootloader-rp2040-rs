@@ -76,15 +76,14 @@ fn main() -> ! {
             events: &event_bus,
         };
 
-        // Process all services
         for service in &services {
             service.process(&mut ctx);
         }
 
-        // Check for boot request
         if event_bus.has_event(|e| matches!(e, Event::RequestBoot)) {
             event_bus.consume(|e| matches!(e, Event::RequestBoot));
             boot::run_normal_boot(&mut p);
+
             // run_normal_boot only returns when no valid firmware is found
             // → fall back to update mode so the device enumerates on USB
             defmt::println!("No bootable firmware, entering update mode");
@@ -93,7 +92,6 @@ fn main() -> ! {
     }
 }
 
-/// Initialize hardware and flash subsystem
 fn init_hardware() -> peripherals::Peripherals {
     let mut p = match peripherals::init() {
         Ok(p) => p,

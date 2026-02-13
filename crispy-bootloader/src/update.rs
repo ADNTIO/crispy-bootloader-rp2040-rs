@@ -33,14 +33,14 @@ const FW_RAM_BUFFER_ADDR: *mut u8 = 0x20000000 as *mut u8;
 /// Update state machine states.
 #[derive(Clone, Copy, defmt::Format)]
 pub enum UpdateState {
-    /// Inactive - not in update mode
-    Inactive,
-    /// Initializing USB
-    Initializing,
-    /// Waiting for a new update to start.
-    Idle,
+    /// Waiting for an explicit update-mode request.
+    Standby,
+    /// Initializing USB transport for update mode.
+    InitializingUsb,
+    /// Update mode is active and ready for commands.
+    Ready,
     /// Actively receiving firmware data (accumulating in RAM).
-    Receiving {
+    ReceivingData {
         bank: u8,
         bank_addr: u32,
         expected_size: u32,
@@ -48,9 +48,9 @@ pub enum UpdateState {
         version: u32,
         bytes_received: u32,
     },
-    /// Persisting firmware from RAM to flash (no USB commands processed).
+    /// Writing firmware from RAM to flash (no USB commands processed).
     #[allow(dead_code)]
-    Persisting {
+    WritingFlash {
         bank: u8,
         bank_addr: u32,
         size: u32,
@@ -88,11 +88,11 @@ fn handle_get_status(transport: &mut UsbTransport, state: UpdateState) -> Update
     defmt::println!("handle_get_status called");
     let bd = flash::read_boot_data();
     let boot_state = match &state {
-        UpdateState::Inactive => BootState::UpdateMode,
-        UpdateState::Initializing => BootState::UpdateMode,
-        UpdateState::Idle => BootState::UpdateMode,
-        UpdateState::Receiving { .. } => BootState::Receiving,
-        UpdateState::Persisting { .. } => BootState::Receiving,
+        UpdateState::Standby => BootState::UpdateMode,
+        UpdateState::InitializingUsb => BootState::UpdateMode,
+        UpdateState::Ready => BootState::UpdateMode,
+        UpdateState::ReceivingData { .. } => BootState::Receiving,
+        UpdateState::WritingFlash { .. } => BootState::Receiving,
     };
     let success = transport.send(&Response::Status {
         active_bank: bd.active_bank,
@@ -114,8 +114,8 @@ fn handle_start_update(
     crc32: u32,
     version: u32,
 ) -> UpdateState {
-    // Must be in Idle state
-    if !matches!(state, UpdateState::Idle) {
+    // Must be in Ready state
+    if !matches!(state, UpdateState::Ready) {
         transport.send(&Response::Ack(AckStatus::BadState));
         return state;
     }
@@ -155,7 +155,7 @@ fn handle_start_update(
     );
     transport.send(&Response::Ack(AckStatus::Ok));
 
-    UpdateState::Receiving {
+    UpdateState::ReceivingData {
         bank,
         bank_addr,
         expected_size: size,
@@ -178,7 +178,7 @@ fn handle_data_block(
         data.len()
     );
 
-    let UpdateState::Receiving {
+    let UpdateState::ReceivingData {
         bank_addr: _,
         ref mut bytes_received,
         expected_size,
@@ -242,7 +242,7 @@ fn handle_data_block(
 
 /// Handle FinishUpdate command: persist RAM buffer to flash, verify CRC, update BootData.
 fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> UpdateState {
-    let UpdateState::Receiving {
+    let UpdateState::ReceivingData {
         bank,
         bank_addr,
         expected_size,
@@ -263,7 +263,7 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
             expected_size
         );
         transport.send(&Response::Ack(AckStatus::BadCommand));
-        return UpdateState::Receiving {
+        return UpdateState::ReceivingData {
             bank,
             bank_addr,
             expected_size,
@@ -291,7 +291,7 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
             ram_crc
         );
         transport.send(&Response::Ack(AckStatus::CrcError));
-        return UpdateState::Idle;
+        return UpdateState::Ready;
     }
 
     defmt::println!("FinishUpdate: CRC OK, persisting to flash...");
@@ -328,7 +328,7 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
             flash_crc
         );
         transport.send(&Response::Ack(AckStatus::CrcError));
-        return UpdateState::Idle;
+        return UpdateState::Ready;
     }
 
     // Update BootData
@@ -352,7 +352,7 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
     }
 
     transport.send(&Response::Ack(AckStatus::Ok));
-    UpdateState::Idle
+    UpdateState::Ready
 }
 
 /// Handle Reboot command: send ACK and reset the system.
@@ -369,8 +369,8 @@ fn handle_set_active_bank(
     state: UpdateState,
     bank: u8,
 ) -> UpdateState {
-    // Must be in Idle state
-    if !matches!(state, UpdateState::Idle) {
+    // Must be in Ready state
+    if !matches!(state, UpdateState::Ready) {
         transport.send(&Response::Ack(AckStatus::BadState));
         return state;
     }
@@ -426,7 +426,7 @@ fn handle_set_active_bank(
 }
 
 fn handle_wipe_all(transport: &mut UsbTransport, state: UpdateState) -> UpdateState {
-    if !matches!(state, UpdateState::Idle) {
+    if !matches!(state, UpdateState::Ready) {
         transport.send(&Response::Ack(AckStatus::BadState));
         return state;
     }
