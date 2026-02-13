@@ -52,7 +52,11 @@ pub enum UpdateState {
 }
 
 /// Dispatch a command to its handler.
-pub fn dispatch_command(transport: &mut UsbTransport, state: UpdateState, cmd: Command) -> UpdateState {
+pub fn dispatch_command(
+    transport: &mut UsbTransport,
+    state: UpdateState,
+    cmd: Command,
+) -> UpdateState {
     match cmd {
         Command::GetStatus => handle_get_status(transport, state),
         Command::StartUpdate {
@@ -113,7 +117,11 @@ fn handle_start_update(
 
     // Validate size fits in RAM buffer
     if size == 0 || size > FW_RAM_BUFFER_SIZE as u32 {
-        defmt::warn!("Firmware size {} exceeds RAM buffer {}", size, FW_RAM_BUFFER_SIZE);
+        defmt::warn!(
+            "Firmware size {} exceeds RAM buffer {}",
+            size,
+            FW_RAM_BUFFER_SIZE
+        );
         transport.send(&Response::Ack(AckStatus::BankInvalid));
         return state;
     }
@@ -129,7 +137,11 @@ fn handle_start_update(
     // No need to initialize RAM buffer - we'll overwrite it with firmware data
     // The buffer resides in unused firmware RAM region
 
-    defmt::println!("StartUpdate: bank={}, size={}, will buffer in RAM", bank, size);
+    defmt::println!(
+        "StartUpdate: bank={}, size={}, will buffer in RAM",
+        bank,
+        size
+    );
     transport.send(&Response::Ack(AckStatus::Ok));
 
     UpdateState::Receiving {
@@ -149,7 +161,11 @@ fn handle_data_block(
     offset: u32,
     data: heapless::Vec<u8, MAX_DATA_BLOCK_SIZE>,
 ) -> UpdateState {
-    defmt::println!("handle_data_block: offset={}, data_len={}", offset, data.len());
+    defmt::println!(
+        "handle_data_block: offset={}, data_len={}",
+        offset,
+        data.len()
+    );
 
     let UpdateState::Receiving {
         bank_addr: _,
@@ -163,11 +179,19 @@ fn handle_data_block(
         return state;
     };
 
-    defmt::println!("handle_data_block: bytes_received={}, expected={}", *bytes_received, expected_size);
+    defmt::println!(
+        "handle_data_block: bytes_received={}, expected={}",
+        *bytes_received,
+        expected_size
+    );
 
     // Validate sequential offset
     if offset != *bytes_received {
-        defmt::warn!("handle_data_block: BadOffset {} != {}", offset, *bytes_received);
+        defmt::warn!(
+            "handle_data_block: BadOffset {} != {}",
+            offset,
+            *bytes_received
+        );
         transport.send(&Response::Ack(AckStatus::BadCommand));
         return state;
     }
@@ -182,13 +206,17 @@ fn handle_data_block(
 
     // Copy data to RAM buffer (NO flash writes, interrupts stay enabled!)
     let ram_offset = *bytes_received as usize;
-    defmt::println!("handle_data_block: Copying {} bytes to RAM at offset {}", data_len, ram_offset);
+    defmt::println!(
+        "handle_data_block: Copying {} bytes to RAM at offset {}",
+        data_len,
+        ram_offset
+    );
 
     unsafe {
         core::ptr::copy_nonoverlapping(
             data.as_ptr(),
             FW_RAM_BUFFER_ADDR.add(ram_offset),
-            data_len as usize
+            data_len as usize,
         );
     }
 
@@ -218,7 +246,11 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
 
     // Verify all data was received in RAM
     if bytes_received != expected_size {
-        defmt::warn!("FinishUpdate: Incomplete data {} != {}", bytes_received, expected_size);
+        defmt::warn!(
+            "FinishUpdate: Incomplete data {} != {}",
+            bytes_received,
+            expected_size
+        );
         transport.send(&Response::Ack(AckStatus::BadCommand));
         return UpdateState::Receiving {
             bank,
@@ -242,7 +274,11 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
     };
 
     if ram_crc != expected_crc {
-        defmt::warn!("FinishUpdate: CRC mismatch in RAM: expected 0x{:08x}, got 0x{:08x}", expected_crc, ram_crc);
+        defmt::warn!(
+            "FinishUpdate: CRC mismatch in RAM: expected 0x{:08x}, got 0x{:08x}",
+            expected_crc,
+            ram_crc
+        );
         transport.send(&Response::Ack(AckStatus::CrcError));
         return UpdateState::Idle;
     }
@@ -275,7 +311,11 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
     // Verify CRC from flash
     let flash_crc = flash::compute_crc32(bank_addr, expected_size);
     if flash_crc != expected_crc {
-        defmt::error!("FinishUpdate: Flash CRC mismatch: expected 0x{:08x}, got 0x{:08x}", expected_crc, flash_crc);
+        defmt::error!(
+            "FinishUpdate: Flash CRC mismatch: expected 0x{:08x}, got 0x{:08x}",
+            expected_crc,
+            flash_crc
+        );
         transport.send(&Response::Ack(AckStatus::CrcError));
         return UpdateState::Idle;
     }

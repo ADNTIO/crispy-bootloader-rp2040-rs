@@ -5,7 +5,10 @@
 
 use crate::{peripherals::Peripherals, usb_transport::UsbTransport};
 use core::cell::UnsafeCell;
-use crispy_common::{protocol::Command, service::{Service, ServiceContext}};
+use crispy_common::{
+    protocol::Command,
+    service::{Service, ServiceContext},
+};
 use heapless::spsc::Queue;
 
 /// Wrapper to hold a Queue in a static without `static mut`.

@@ -90,13 +90,18 @@ impl Service<Peripherals> for UpdateService {
                     let new_state = usb::with_transport(move |transport| {
                         defmt::println!("Update: Dispatching command");
                         update::dispatch_command(transport, state_copy, cmd)
-                    }).unwrap_or_else(|| {
+                    })
+                    .unwrap_or_else(|| {
                         defmt::error!("Update: with_transport returned None!");
                         state
                     });
 
                     let t_end = ctx.peripherals.timer.get_counter().ticks();
-                    defmt::println!("Update: Command took {} us, new state: {:?}", t_end - t_start, new_state);
+                    defmt::println!(
+                        "Update: Command took {} us, new state: {:?}",
+                        t_end - t_start,
+                        new_state
+                    );
                     new_state
                 } else {
                     state

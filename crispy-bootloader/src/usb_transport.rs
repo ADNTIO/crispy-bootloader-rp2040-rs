@@ -143,8 +143,11 @@ impl UsbTransport {
                 Err(UsbError::WouldBlock) => {
                     poll_count += 1;
                     if poll_count > MAX_POLLS {
-                        defmt::warn!("TX buffer full after {} polls, dropping {} bytes",
-                                   MAX_POLLS, data.len() - offset);
+                        defmt::warn!(
+                            "TX buffer full after {} polls, dropping {} bytes",
+                            MAX_POLLS,
+                            data.len() - offset
+                        );
                         return false;
                     }
 

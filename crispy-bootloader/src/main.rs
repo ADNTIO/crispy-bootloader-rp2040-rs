@@ -60,7 +60,7 @@ fn main() -> ! {
     let event_bus = EventBus::new();
 
     let services = [
-        ServiceType::UsbTransport(UsbTransportService::new()),  
+        ServiceType::UsbTransport(UsbTransportService::new()),
         ServiceType::Trigger(TriggerCheckService::new()),
         ServiceType::Update(UpdateService::new()),
         ServiceType::Led(LedBlinkService::new()),

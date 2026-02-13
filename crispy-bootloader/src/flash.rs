@@ -85,11 +85,13 @@ pub fn addr_to_offset(abs_addr: u32) -> u32 {
 #[link_section = ".data"]
 #[inline(never)]
 pub unsafe fn flash_erase(offset: u32, size: u32) {
-    let connect: RomFnVoid = core::mem::transmute(ROM_CONNECT_INTERNAL_FLASH.load(Ordering::Acquire));
+    let connect: RomFnVoid =
+        core::mem::transmute(ROM_CONNECT_INTERNAL_FLASH.load(Ordering::Acquire));
     let exit_xip: RomFnVoid = core::mem::transmute(ROM_FLASH_EXIT_XIP.load(Ordering::Acquire));
     let erase: RomFnErase = core::mem::transmute(ROM_FLASH_RANGE_ERASE.load(Ordering::Acquire));
     let flush: RomFnVoid = core::mem::transmute(ROM_FLASH_FLUSH_CACHE.load(Ordering::Acquire));
-    let enter_xip: RomFnVoid = core::mem::transmute(ROM_FLASH_ENTER_CMD_XIP.load(Ordering::Acquire));
+    let enter_xip: RomFnVoid =
+        core::mem::transmute(ROM_FLASH_ENTER_CMD_XIP.load(Ordering::Acquire));
 
     cortex_m::interrupt::disable();
     connect();
@@ -108,11 +110,14 @@ pub unsafe fn flash_erase(offset: u32, size: u32) {
 #[link_section = ".data"]
 #[inline(never)]
 pub unsafe fn flash_program(offset: u32, data: *const u8, len: usize) {
-    let connect: RomFnVoid = core::mem::transmute(ROM_CONNECT_INTERNAL_FLASH.load(Ordering::Acquire));
+    let connect: RomFnVoid =
+        core::mem::transmute(ROM_CONNECT_INTERNAL_FLASH.load(Ordering::Acquire));
     let exit_xip: RomFnVoid = core::mem::transmute(ROM_FLASH_EXIT_XIP.load(Ordering::Acquire));
-    let program: RomFnProgram = core::mem::transmute(ROM_FLASH_RANGE_PROGRAM.load(Ordering::Acquire));
+    let program: RomFnProgram =
+        core::mem::transmute(ROM_FLASH_RANGE_PROGRAM.load(Ordering::Acquire));
     let flush: RomFnVoid = core::mem::transmute(ROM_FLASH_FLUSH_CACHE.load(Ordering::Acquire));
-    let enter_xip: RomFnVoid = core::mem::transmute(ROM_FLASH_ENTER_CMD_XIP.load(Ordering::Acquire));
+    let enter_xip: RomFnVoid =
+        core::mem::transmute(ROM_FLASH_ENTER_CMD_XIP.load(Ordering::Acquire));
 
     cortex_m::interrupt::disable();
     connect();
