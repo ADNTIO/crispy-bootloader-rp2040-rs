@@ -34,7 +34,6 @@ The validation chain looks like this:
 3. **Deployment tests** — firmware is uploaded via USB, the board reboots, and we verify
    that the new firmware actually runs correctly (bank switching, version reporting,
    rollback behavior)
-4. **Manual check** — the developer looks at the board and confirms it does what it should
 
 If step 1 passes but step 3 fails, the change does not get merged.
 
@@ -87,12 +86,6 @@ Does it actually help? Where does it fall short? Can the method be improved?
 Embedded is not like web dev. You can't mock a flash controller that disables interrupts
 for 2ms. You can't simulate USB enumeration timing. The Raspberry Pi Pico *is* the spec.
 That makes it a good testbed: if AI-generated code works here, it works for real.
-
-This approach gives us:
-- **A real benchmark** — each iteration measures how well AI handles embedded constraints
-- **Real confidence** — every merge is hardware-proven on a Raspberry Pi Pico
-- **Sustainable quality** — we refactor with a safety net of hardware tests
-- **An evolving method** — each pass teaches us what works and what doesn't with AI
 
 ## A Word of Honesty
 

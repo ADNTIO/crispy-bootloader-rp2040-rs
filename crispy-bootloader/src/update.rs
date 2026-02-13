@@ -41,6 +41,7 @@ pub enum UpdateState {
         bytes_received: u32,
     },
     /// Persisting firmware from RAM to flash (no USB commands processed).
+    #[allow(dead_code)]
     Persisting {
         bank: u8,
         bank_addr: u32,
@@ -151,7 +152,7 @@ fn handle_data_block(
     defmt::println!("handle_data_block: offset={}, data_len={}", offset, data.len());
 
     let UpdateState::Receiving {
-        bank_addr,
+        bank_addr: _,
         ref mut bytes_received,
         expected_size,
         ..

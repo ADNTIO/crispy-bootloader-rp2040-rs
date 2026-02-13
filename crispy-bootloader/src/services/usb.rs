@@ -4,14 +4,18 @@
 //! USB transport service for polling and receiving commands.
 
 use crate::{peripherals::Peripherals, usb_transport::UsbTransport};
+use core::cell::UnsafeCell;
 use crispy_common::{protocol::Command, service::{Service, ServiceContext}};
 use heapless::spsc::Queue;
 
-/// Static command queue for USB -> Update communication
+/// Wrapper to hold a Queue in a static without `static mut`.
 ///
-/// SAFETY: This is safe because we run in a single-threaded environment.
+/// SAFETY: This is only safe in a single-threaded (bare-metal, no OS) environment.
 /// Only UsbTransportService (producer) calls enqueue, only UpdateService (consumer) calls dequeue.
-static mut COMMAND_QUEUE: Queue<Command, 8> = Queue::new();
+struct SyncQueue(UnsafeCell<Queue<Command, 8>>);
+unsafe impl Sync for SyncQueue {}
+
+static COMMAND_QUEUE: SyncQueue = SyncQueue(UnsafeCell::new(Queue::new()));
 
 /// Initialize the command queue (call once at startup)
 pub fn init_command_queue() {
@@ -19,32 +23,31 @@ pub fn init_command_queue() {
 }
 
 /// Push a command to the queue (called by USB service)
+#[allow(clippy::result_large_err)]
 pub fn push_command(cmd: Command) -> Result<(), Command> {
-    unsafe {
-        // SAFETY: Single-threaded, only UsbTransportService calls this
-        COMMAND_QUEUE.enqueue(cmd)
-    }
+    // SAFETY: Single-threaded bare-metal environment, no concurrent access
+    unsafe { (*COMMAND_QUEUE.0.get()).enqueue(cmd) }
 }
 
 /// Pop a command from the queue (called by Update service)
 pub fn pop_command() -> Option<Command> {
-    unsafe {
-        // SAFETY: Single-threaded, only UpdateService calls this
-        COMMAND_QUEUE.dequeue()
-    }
+    // SAFETY: Single-threaded bare-metal environment, no concurrent access
+    unsafe { (*COMMAND_QUEUE.0.get()).dequeue() }
 }
 
-/// Static USB transport shared between services
+/// Wrapper to hold an Option<UsbTransport> in a static without `static mut`.
 ///
-/// SAFETY: This is safe because we run in a single-threaded environment
-/// (bare metal, no OS). Access is protected by RefCell borrow checking.
-static mut USB_TRANSPORT: Option<UsbTransport> = None;
+/// SAFETY: Same single-threaded guarantee as above.
+struct SyncTransport(UnsafeCell<Option<UsbTransport>>);
+unsafe impl Sync for SyncTransport {}
+
+static USB_TRANSPORT: SyncTransport = SyncTransport(UnsafeCell::new(None));
 
 /// Store the USB transport (call once after initialization)
 pub fn store_transport(transport: UsbTransport) {
+    // SAFETY: Called only once during initialization, single-threaded
     unsafe {
-        // SAFETY: Called only once during initialization
-        USB_TRANSPORT = Some(transport);
+        *USB_TRANSPORT.0.get() = Some(transport);
     }
 }
 
@@ -53,10 +56,8 @@ pub fn with_transport<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(&mut UsbTransport) -> R,
 {
-    unsafe {
-        // SAFETY: Single-threaded environment, no concurrent access
-        USB_TRANSPORT.as_mut().map(f)
-    }
+    // SAFETY: Single-threaded environment, no concurrent access
+    unsafe { (*USB_TRANSPORT.0.get()).as_mut().map(f) }
 }
 
 /// Service that polls USB and queues received commands

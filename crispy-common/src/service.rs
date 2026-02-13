@@ -21,6 +21,12 @@ pub struct EventBus {
     events: RefCell<Vec<Event, 32>>,
 }
 
+impl Default for EventBus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventBus {
     pub const fn new() -> Self {
         Self {
@@ -30,7 +36,7 @@ impl EventBus {
 
     /// Publish an event to the bus
     pub fn publish(&self, event: Event) {
-        if let Err(_) = self.events.borrow_mut().push(event) {
+        if self.events.borrow_mut().push(event).is_err() {
             #[cfg(feature = "defmt")]
             defmt::warn!("Event bus full, dropping event: {:?}", event);
         }
