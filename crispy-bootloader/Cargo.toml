@@ -29,3 +29,4 @@ heapless = "0.8"
 panic-probe = { version = "1", features = ["print-defmt"] }
 defmt = "1"
 defmt-rtt = "1"
+flip-link = "0.1"

@@ -14,6 +14,9 @@
 
 [target.thumbv6m-none-eabi]
 runner = "probe-rs run --chip RP2040"
+rustflags = [
+    "-C", "linker=flip-link",
+]
 
 [env]
 DEFMT_LOG = "debug"

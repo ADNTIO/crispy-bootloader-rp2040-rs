@@ -37,9 +37,9 @@ __fw_b_entry       = __fw_a_entry + __fw_bank_size;
 __boot_data_addr   = __fw_b_entry + __fw_bank_size;
 
 MEMORY {
-    BOOT2 : ORIGIN = 0x10000000, LENGTH = __boot2_size
-    FLASH : ORIGIN = 0x10000000 + __boot2_size, LENGTH = __bootloader_size - __boot2_size
-    RAM   : ORIGIN = __bootloader_ram, LENGTH = __bootloader_ram_size
+    BOOT2 : ORIGIN = 0x10000000, LENGTH = 0x100
+    FLASH : ORIGIN = 0x10000100, LENGTH = 0xFF00  /* 64KB - 256B = 65280 bytes */
+    RAM   : ORIGIN = 0x2003C000, LENGTH = 16K
 }
 
 EXTERN(BOOT2_FIRMWARE)
