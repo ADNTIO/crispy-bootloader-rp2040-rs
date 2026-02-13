@@ -5,10 +5,16 @@
 ## Syntax
 
 ```bash
-crispy-upload [--port <PORT>] <COMMAND>
+crispy-upload [--version|-v] [--port <PORT>] <COMMAND>
 ```
 
 `--port` is required for all commands except `bin2uf2`.
+
+## Show Tool Version
+
+```bash
+crispy-upload --version
+```
 
 ## Commands
 
@@ -20,13 +26,29 @@ Get current bootloader status:
 crispy-upload --port /dev/ttyACM0 status
 ```
 
-### `upload <FILE> [--bank <0|1>] [--version <N>]`
+Typical output:
+
+```text
+Bootloader Status:
+  Bootloader:  1.2.3
+  Active bank: 0 (A)
+  Version A:   5
+  Version B:   4
+  State:       UpdateMode
+```
+
+On older bootloader builds, `Bootloader` may be shown as `unknown`.
+
+### `upload <FILE> [--bank <0|1>] [--fw-version <N>]`
 
 Upload a firmware binary to a target bank:
 
 ```bash
-crispy-upload --port /dev/ttyACM0 upload firmware.bin --bank 0 --version 1
+crispy-upload --port /dev/ttyACM0 upload firmware.bin --bank 0 --fw-version 1
 ```
+
+`--version` remains accepted as an alias of `--fw-version` for backward compatibility.
+Use `-V` as the short form for firmware version.
 
 ### `set-bank <BANK>`
 

@@ -35,7 +35,7 @@ Then upload a known-good firmware:
 ```bash
 make firmware-bin
 cargo run --release -p crispy-upload -- --port /dev/ttyACM0 upload \
-  target/thumbv6m-none-eabi/release/crispy-fw-sample-rs.bin --bank 0 --version 1
+  target/thumbv6m-none-eabi/release/crispy-fw-sample-rs.bin --bank 0 --fw-version 1
 cargo run --release -p crispy-upload -- --port /dev/ttyACM0 set-bank 0
 cargo run --release -p crispy-upload -- --port /dev/ttyACM0 reboot
 ```

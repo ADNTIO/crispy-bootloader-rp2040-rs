@@ -41,7 +41,7 @@ crispy-fw-sample-rs/   # Sample Rust firmware (RAM execution)
 crispy-fw-sample-cpp/  # Sample C++ firmware (Pico SDK)
 crispy-sdk-cpp/        # C++ SDK for Crispy bootloader
 crispy-common/         # Shared Rust crate (protocol + flash utilities)
-crispy-upload/         # Host CLI for upload / status / bank selection
+crispy-upload/         # Host CLI (`crispy-upload`) for upload / status / bank selection
 scripts/               # Utility scripts (integration tests, Python tools)
 linker_scripts/        # Memory layouts for bootloader and firmware
 docs/                  # Project documentation (Diataxis structure)
