@@ -19,7 +19,7 @@ The bank selection logic lives in `crispy-bootloader/src/boot.rs`, in the
 `select_boot_bank()` function. It combines hardware-level validation (flash reads,
 CRC computation, vector table checks) with the decision logic in a single module.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    crispy-bootloader                        │
 │  ┌─────────────────────────────────────────────────────┐   │
@@ -41,7 +41,7 @@ CRC computation, vector table checks) with the decision logic in a single module
 
 ## Boot Flow
 
-```
+```text
                     ┌─────────────────┐
                     │   Start Boot    │
                     └────────┬────────┘
@@ -130,6 +130,7 @@ exceeds the threshold. Returns `false` if `BootData` is invalid.
 ### Full CRC Validation (`validate_bank_with_crc`)
 
 The strongest validation, requires:
+
 - Non-zero firmware size in BootData
 - Valid vector table (SP and reset vector in RAM range)
 - CRC32 checksum matches stored value
@@ -137,6 +138,7 @@ The strongest validation, requires:
 ### Basic Validation (`validate_bank`)
 
 Fallback validation when CRC data is unavailable:
+
 - Valid vector table only (SP and reset vector point to RAM)
 - Used when firmware was loaded without metadata
 
@@ -145,7 +147,7 @@ Fallback validation when CRC data is unavailable:
 The `select_boot_bank()` function tries strategies in this order:
 
 | Priority | Strategy | Validation | Bank |
-|----------|----------|------------|------|
+| -------- | -------- | ---------- | ---- |
 | 1 | Primary + CRC | Full CRC32 | Active bank |
 | 2 | Fallback + CRC | Full CRC32 | Alternate bank |
 | 3 | Primary + basic | Vector table | Active bank |
@@ -153,6 +155,7 @@ The `select_boot_bank()` function tries strategies in this order:
 | 5 | Default | None | Active bank |
 
 This ensures:
+
 - Prefer the active bank when valid
 - Fall back to alternate bank if primary fails
 - Degrade gracefully from CRC to basic validation
@@ -186,7 +189,7 @@ Total size: 32 bytes (fixed, `repr(C)`)
 
 ### Scenario 1: Normal Boot
 
-```
+```text
 BootData: active_bank=0, attempts=0, confirmed=0
 Bank A: CRC valid
 Bank B: CRC valid
@@ -196,7 +199,7 @@ Result: Boot Bank A, attempts=1
 
 ### Scenario 2: Primary CRC Invalid
 
-```
+```text
 BootData: active_bank=0, attempts=0, confirmed=0
 Bank A: CRC invalid
 Bank B: CRC valid
@@ -206,7 +209,7 @@ Result: Boot Bank B, attempts=1, active_bank=1
 
 ### Scenario 3: Boot Loop Detection
 
-```
+```text
 BootData: active_bank=0, attempts=3, confirmed=0
 Bank A: CRC valid
 Bank B: CRC valid
@@ -216,7 +219,7 @@ Result: Rollback to Bank B, attempts=1, active_bank=1
 
 ### Scenario 4: Confirmed Firmware
 
-```
+```text
 BootData: active_bank=0, attempts=5, confirmed=1
 Bank A: CRC valid
 

@@ -12,7 +12,7 @@ The bootloader uses a finite state machine (FSM) to manage the firmware update p
 
 #### Update State Machine
 
-```
+```text
 Inactive
    ↓ (Event::RequestUpdate)
 Initializing
@@ -43,18 +43,21 @@ Idle
 **Solution**: Firmware data is buffered in RAM during reception, then written to flash in one operation after all data is received.
 
 **Implementation Details:**
+
 - Uses firmware RAM region (0x20000000 - 0x20030000, 192KB) which is unused during bootloader operation
 - Bootloader only has 16KB of dedicated RAM, but can safely use the firmware region as a temporary buffer
 - Buffer size: 128KB (configurable via `FW_RAM_BUFFER_SIZE`)
 - Zero-copy design using raw pointers for performance
 
 **Benefits:**
+
 - No interrupt disruption during data reception
 - Fast ACK responses to host
 - USB remains responsive throughout upload
 - Reduced flash wear (single erase + write cycle instead of multiple)
 
 **Tradeoffs:**
+
 - Firmware size limited to 128KB (well within typical requirements; sample firmware ~32KB)
 - Full firmware must be received before flash write begins
 - Memory safety relies on correct size validation
@@ -73,12 +76,14 @@ enum ServiceType {
 ```
 
 **Why Services?**
+
 - **Single-threaded simplicity**: Avoids RTOS complexity and multicore synchronization
 - **Predictable execution**: Each service processes once per loop iteration
 - **Easy testing**: Services can be tested independently
 - **Clear separation of concerns**: USB I/O separate from command processing
 
 **Command Queue Pattern:**
+
 - `UsbTransportService` receives commands via USB → enqueues to `heapless::spsc::Queue`
 - `UpdateService` dequeues commands → dispatches to handlers
 - Queue size: 8 commands (sufficient for typical command rates)
@@ -87,11 +92,13 @@ enum ServiceType {
 #### 3. Flash Write Optimization
 
 **Flash Erase**: Done once at `FinishUpdate`, not during `StartUpdate`
+
 - Rationale: Erasing can take 80-100ms for multi-sector firmware
 - Moving it to the end allows quick `StartUpdate` ACK
 - Host doesn't send commands during `FinishUpdate`, so long flash write is acceptable
 
 **Flash Write Loop**: Writes RAM buffer to flash in page-aligned chunks
+
 ```rust
 while offset < expected_size {
     let chunk_size = (expected_size - offset).min(FLASH_PAGE_SIZE);
@@ -102,12 +109,14 @@ while offset < expected_size {
 ```
 
 **CRC Verification**: Two-stage verification
+
 1. Verify CRC of RAM buffer before flash write (fail fast)
 2. Verify CRC of written flash data (ensure write success)
 
 #### 4. Event-Driven State Transitions
 
 Uses an event bus for decoupled communication between services:
+
 ```rust
 // TriggerCheckService publishes event
 ctx.events.publish(Event::RequestUpdate);
@@ -121,13 +130,14 @@ ctx.events.consume(|event| {
 ```
 
 **Benefits:**
+
 - Services don't need direct references to each other
 - Easy to add new trigger conditions (e.g., GPIO, timeout)
 - Clear audit trail of state transitions
 
 ## Memory Layout
 
-```
+```text
 RP2040 RAM (264KB total):
   0x20000000 - 0x20030000: Firmware RAM (192KB)
                            ├─ Used as FW_RAM_BUFFER during bootloader operation
@@ -170,6 +180,7 @@ Flash (2MB):
 ## Testing Strategy
 
 All changes are:
+
 1. Tested on real hardware (RP2040-based device)
 2. Verified through integration tests covering:
    - Basic bootloader status queries

@@ -22,7 +22,8 @@ python crispy_upload.py --port /dev/ttyACM0 status
 ```
 
 Output:
-```
+
+```text
 Bootloader Status:
   Active bank: 0 (A)
   Version A:   5
@@ -37,11 +38,13 @@ python crispy_upload.py --port /dev/ttyACM0 upload firmware.bin --bank 0 --versi
 ```
 
 Options:
+
 - `--bank`, `-b`: Target bank (0=A, 1=B, default: 0)
 - `--version`, `-v`: Firmware version number (default: 1)
 
 Output:
-```
+
+```text
 Firmware: firmware.bin (31916 bytes, CRC32: 0x2b48b782)
 Target:   Bank 0 (A)
 Version:  5
@@ -142,6 +145,7 @@ print(f"CRC32: 0x{checksum:08x}")
 ## Protocol Details
 
 The bootloader uses a binary protocol with:
+
 - **Framing**: COBS (Consistent Overhead Byte Stuffing) with 0x00 delimiter
 - **Serialization**: Postcard format (Rust's serde-based binary format)
 - **Integers**: Variable-length encoding (LEB128/varint)
@@ -150,7 +154,7 @@ The bootloader uses a binary protocol with:
 ### Commands
 
 | Command | Description |
-|---------|-------------|
+| ------- | ----------- |
 | `GetStatus` | Get bootloader state and bank information |
 | `StartUpdate(bank, size, crc32, version)` | Begin firmware update |
 | `DataBlock(offset, data)` | Send firmware data chunk (max 1024 bytes) |
@@ -160,7 +164,7 @@ The bootloader uses a binary protocol with:
 ### Response Status Codes
 
 | Status | Description |
-|--------|-------------|
+| ------ | ----------- |
 | `OK` | Operation successful |
 | `CRC_ERROR` | CRC verification failed |
 | `FLASH_ERROR` | Flash write/erase error |
@@ -173,6 +177,7 @@ The bootloader uses a binary protocol with:
 The device must be in bootloader mode to accept commands. Methods to enter bootloader mode:
 
 1. **From firmware**: Send `bootload` command via USB serial
+
    ```bash
    echo "bootload" > /dev/ttyACM0
    ```
@@ -183,7 +188,7 @@ The device must be in bootloader mode to accept commands. Methods to enter bootl
 
 ## Package Structure
 
-```
+```text
 crispy_protocol/
     __init__.py      # Package exports
     cobs.py          # COBS encode/decode

@@ -19,7 +19,7 @@ This page tracks architecture decisions for the project using ADRs (Architecture
 ## Add a new ADR
 
 1. Create a new file in `docs/explanation/adr/` named `ADR-XXXX-short-title.md`.
-2. Use this structure:
+1. Use this structure:
 
 ```md
 # ADR-XXXX: Title
@@ -38,4 +38,4 @@ This page tracks architecture decisions for the project using ADRs (Architecture
 ## References
 ```
 
-3. Add it to the table above.
+1. Add it to the table above.

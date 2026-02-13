@@ -46,6 +46,7 @@ The first version of anything is allowed to be rough. Working code on hardware b
 clean code that's never been tested on the target.
 
 Once something works and is merged, we come back and improve it:
+
 - simplify the logic
 - extract better abstractions
 - clean up naming and structure
@@ -56,7 +57,7 @@ catches it before it ever reaches `main`.
 
 ## The Workflow
 
-```
+```text
    define what to build
           │
           ▼
