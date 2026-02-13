@@ -6,7 +6,9 @@
 pub mod led;
 pub mod trigger;
 pub mod update;
+pub mod usb;
 
 pub use led::LedBlinkService;
 pub use trigger::TriggerCheckService;
 pub use update::UpdateService;
+pub use usb::UsbTransportService;

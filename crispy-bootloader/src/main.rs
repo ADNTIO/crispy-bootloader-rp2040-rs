@@ -18,7 +18,7 @@ use panic_probe as _;
 
 use crispy_common::service::{Event, EventBus, Service, ServiceContext};
 use peripherals::Peripherals;
-use services::{LedBlinkService, TriggerCheckService, UpdateService};
+use services::{LedBlinkService, TriggerCheckService, UpdateService, UsbTransportService};
 
 defmt::timestamp!("{=u64:us}", { 0 });
 
@@ -30,6 +30,7 @@ pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_GENERIC_03H;
 
 /// Enum containing all possible services
 enum ServiceType {
+    UsbTransport(UsbTransportService),
     Trigger(TriggerCheckService),
     Update(UpdateService),
     Led(LedBlinkService),
@@ -39,6 +40,7 @@ impl ServiceType {
     /// Process this service
     fn process(&self, ctx: &mut ServiceContext<Peripherals>) {
         match self {
+            ServiceType::UsbTransport(s) => s.process(ctx),
             ServiceType::Trigger(s) => s.process(ctx),
             ServiceType::Update(s) => s.process(ctx),
             ServiceType::Led(s) => s.process(ctx),
@@ -51,9 +53,14 @@ fn main() -> ! {
     defmt::println!("Bootloader starting");
 
     let mut p = init_hardware();
+
+    // Initialize command queue for USB<->Update communication
+    services::usb::init_command_queue();
+
     let event_bus = EventBus::new();
 
     let services = [
+        ServiceType::UsbTransport(UsbTransportService::new()),  
         ServiceType::Trigger(TriggerCheckService::new()),
         ServiceType::Update(UpdateService::new()),
         ServiceType::Led(LedBlinkService::new()),

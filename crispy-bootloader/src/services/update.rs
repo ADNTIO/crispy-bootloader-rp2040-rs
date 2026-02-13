@@ -3,8 +3,8 @@
 
 //! Update service for firmware updates via USB.
 
-use crate::{peripherals, peripherals::Peripherals, update, usb_transport::UsbTransport};
-use core::cell::{Cell, RefCell};
+use crate::{peripherals, peripherals::Peripherals, services::usb, update};
+use core::cell::Cell;
 use crispy_common::service::{Event, Service, ServiceContext};
 use embedded_hal::digital::OutputPin;
 use update::UpdateState;
@@ -12,14 +12,12 @@ use update::UpdateState;
 /// Service for handling firmware updates via USB
 pub struct UpdateService {
     state: Cell<UpdateState>,
-    transport: RefCell<Option<UsbTransport>>,
 }
 
 impl UpdateService {
     pub fn new() -> Self {
         Self {
             state: Cell::new(UpdateState::Inactive),
-            transport: RefCell::new(None),
         }
     }
 }
@@ -63,11 +61,12 @@ impl Service<Peripherals> for UpdateService {
 
                     peripherals::store_usb_bus(usb_bus);
 
-                    match UsbTransport::new(peripherals::usb_bus_ref()) {
+                    match crate::usb_transport::UsbTransport::new(peripherals::usb_bus_ref()) {
                         Ok(transport) => {
-                            *self.transport.borrow_mut() = Some(transport);
-                            defmt::println!("USB CDC initialized, entering update mode");
+                            defmt::println!("USB CDC initialized");
                             ctx.peripherals.led_pin.set_high().ok();
+                            // Store transport in USB service
+                            usb::store_transport(transport);
                             Idle
                         }
                         Err(e) => {
@@ -80,21 +79,37 @@ impl Service<Peripherals> for UpdateService {
                 }
             }
             Idle | Receiving { .. } => {
-                // Poll USB and process all available commands
-                if let Some(ref mut transport) = *self.transport.borrow_mut() {
-                    transport.poll();
+                // Process commands from queue
+                if let Some(cmd) = usb::pop_command() {
+                    defmt::println!("Update: Dequeued command from queue");
+                    let t_start = ctx.peripherals.timer.get_counter().ticks();
 
-                    let mut current_state = state;
-                    while let Some(cmd) = transport.try_receive() {
-                        current_state = update::dispatch_command(transport, current_state, cmd);
-                    }
-                    current_state
+                    // Dispatch command with transport access
+                    // Clone state for fallback since it will be moved into closure
+                    let state_copy = state;
+                    let new_state = usb::with_transport(move |transport| {
+                        defmt::println!("Update: Dispatching command");
+                        update::dispatch_command(transport, state_copy, cmd)
+                    }).unwrap_or_else(|| {
+                        defmt::error!("Update: with_transport returned None!");
+                        state
+                    });
+
+                    let t_end = ctx.peripherals.timer.get_counter().ticks();
+                    defmt::println!("Update: Command took {} us, new state: {:?}", t_end - t_start, new_state);
+                    new_state
                 } else {
                     state
                 }
             }
+            Persisting { .. } => {
+                // Flash write in progress, ignore commands
+                defmt::trace!("Update: Persisting, ignoring commands");
+                state
+            }
         };
 
+        defmt::trace!("Update: State: {:?} -> {:?}", state, new_state);
         self.state.set(new_state);
     }
 }

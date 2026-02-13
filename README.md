@@ -1,5 +1,9 @@
 # Crispy RP2040 — Bootloader + Firmware
 
+> **⚠️ AI-Assisted Development**: This bootloader is being developed with AI assistance
+> under human supervision. Every iteration is tested and validated on real hardware before merging.
+> See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for design decisions and rationale.
+
 A/B bootloader for RP2040 (Raspberry Pi Pico) written in Rust. The bootloader copies firmware
 from flash to RAM before executing it, and supports two banks for safe over-the-air updates
 via USB CDC.

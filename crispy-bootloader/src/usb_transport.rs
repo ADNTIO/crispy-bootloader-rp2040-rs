@@ -105,26 +105,93 @@ impl UsbTransport {
     }
 
     /// Send a response as a COBS-framed postcard message.
-    pub fn send(&mut self, resp: &Response) {
+    ///
+    /// Returns true if the response was fully sent.
+    pub fn send(&mut self, resp: &Response) -> bool {
+        defmt::println!("Transport: Sending response");
         let mut buf = [0u8; TX_BUF_SIZE];
         let encoded = match postcard::to_slice_cobs(resp, &mut buf) {
-            Ok(data) => data,
-            Err(_) => return,
+            Ok(data) => {
+                defmt::println!("Transport: Encoded {} bytes", data.len());
+                data
+            }
+            Err(_) => {
+                defmt::error!("Failed to encode response");
+                return false;
+            }
         };
 
-        self.write_all(encoded);
+        let success = self.write_all(encoded);
+        defmt::println!("Transport: write_all returned {}", success);
+        success
     }
 
     /// Write all bytes to USB serial, handling WouldBlock by polling.
-    fn write_all(&mut self, data: &[u8]) {
+    ///
+    /// Returns true if all data was sent, false if some data was dropped.
+    fn write_all(&mut self, data: &[u8]) -> bool {
         let mut offset = 0;
+        let mut poll_count = 0;
+        const MAX_POLLS: usize = 100; // Prevent infinite blocking
+
         while offset < data.len() {
             match self.serial.write(&data[offset..]) {
-                Ok(n) => offset += n,
-                Err(UsbError::WouldBlock) => {
-                    self.poll();
+                Ok(n) => {
+                    offset += n;
+                    poll_count = 0; // Reset on progress
                 }
-                Err(_) => break,
+                Err(UsbError::WouldBlock) => {
+                    poll_count += 1;
+                    if poll_count > MAX_POLLS {
+                        defmt::warn!("TX buffer full after {} polls, dropping {} bytes",
+                                   MAX_POLLS, data.len() - offset);
+                        return false;
+                    }
+
+                    // Poll device AND read RX to prevent buffer overflow
+                    self.poll();
+                    self.drain_rx_to_buffer();
+                }
+                Err(_) => {
+                    defmt::error!("USB write error");
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Drain RX buffer without blocking, accumulating data for next try_receive()
+    fn drain_rx_to_buffer(&mut self) {
+        // Don't drain if RX buffer is already >75% full to prevent corruption
+        if self.rx_pos > (RX_BUF_SIZE * 3 / 4) {
+            defmt::warn!("RX buffer nearly full ({}), skipping drain", self.rx_pos);
+            return;
+        }
+
+        const USB_READ_BUF_SIZE: usize = 64;
+        let mut tmp = [0u8; USB_READ_BUF_SIZE];
+
+        // Read whatever is available (non-blocking)
+        if let Ok(count) = self.serial.read(&mut tmp) {
+            if count > 0 {
+                defmt::trace!("Drained {} RX bytes during TX", count);
+                // Process bytes into our RX buffer
+                for &byte in &tmp[..count] {
+                    // Stop draining if buffer is getting full
+                    if self.rx_pos >= (RX_BUF_SIZE * 3 / 4) {
+                        defmt::warn!("RX buffer filling up during drain, stopping");
+                        break;
+                    }
+
+                    // Accumulate data - will be processed on next try_receive()
+                    if byte == 0x00 {
+                        // Frame delimiter - try decode but ignore result
+                        let _ = self.try_decode_frame();
+                    } else {
+                        self.append_byte(byte);
+                    }
+                }
             }
         }
     }
