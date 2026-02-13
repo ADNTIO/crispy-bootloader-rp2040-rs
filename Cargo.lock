@@ -1268,8 +1268,3 @@ name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
-
-[[patch.unused]]
-name = "rp2040-hal"
-version = "0.12.0"
-source = "git+https://github.com/rp-rs/rp-hal?branch=main#c09914ea54d44e46c10e117917e1e7837efb66d9"

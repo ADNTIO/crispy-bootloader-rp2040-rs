@@ -22,6 +22,8 @@ pub struct UsbTransport {
     usb_dev: UsbDevice<'static, UsbBus>,
     rx_buf: [u8; RX_BUF_SIZE],
     rx_pos: usize,
+    /// Command decoded during drain_rx_to_buffer, delivered on next try_receive().
+    pending_cmd: Option<Command>,
 }
 
 impl UsbTransport {
@@ -41,6 +43,7 @@ impl UsbTransport {
             usb_dev,
             rx_buf: [0u8; RX_BUF_SIZE],
             rx_pos: 0,
+            pending_cmd: None,
         })
     }
 
@@ -51,7 +54,13 @@ impl UsbTransport {
 
     /// Try to receive a complete COBS-framed command.
     /// Returns `Some(Command)` when a full frame has been decoded.
+    /// Delivers commands buffered during TX drain before reading new data.
     pub fn try_receive(&mut self) -> Option<Command> {
+        // Deliver command that was decoded during drain_rx_to_buffer first
+        if let Some(cmd) = self.pending_cmd.take() {
+            return Some(cmd);
+        }
+
         const USB_READ_BUF_SIZE: usize = 64;
         let mut tmp = [0u8; USB_READ_BUF_SIZE];
 
@@ -189,8 +198,13 @@ impl UsbTransport {
 
                     // Accumulate data - will be processed on next try_receive()
                     if byte == 0x00 {
-                        // Frame delimiter - try decode but ignore result
-                        let _ = self.try_decode_frame();
+                        // Frame delimiter - decode and buffer the command
+                        if let Some(cmd) = self.try_decode_frame() {
+                            if self.pending_cmd.is_some() {
+                                defmt::warn!("Pending command slot full, dropping command");
+                            }
+                            self.pending_cmd = Some(cmd);
+                        }
                     } else {
                         self.append_byte(byte);
                     }
