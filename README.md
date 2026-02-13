@@ -12,16 +12,10 @@ For full documentation, start here: [`docs/index.md`](docs/index.md)
 
 ## Documentation
 
-- Tutorial: [Flash the bootloader for the first time](docs/tutorials/first-bootloader-flash.md)
-- How-to: [Upload firmware](docs/how-to/upload-firmware.md)
-- How-to: [Run integration tests](docs/how-to/run-integration-tests.md)
-- Reference: [CLI `crispy-upload`](docs/reference/cli-crispy-upload.md)
-- Reference: [Protocol](docs/reference/protocol.md)
-- Explanation: [Architecture](docs/explanation/architecture.md)
-- Explanation: [AI-assisted development concept](docs/explanation/ai-assisted-development.md)
-- Explanation: [Architecture decisions (ADR)](docs/explanation/architecture-decisions.md)
-- Explanation: [Boot bank selection](docs/explanation/boot-bank-selection.md)
-- Explanation: [Development methodology](docs/explanation/development-methodology.md)
+- Documentation hub: [`docs/index.md`](docs/index.md)
+- First-time setup: [`docs/tutorials/first-bootloader-flash.md`](docs/tutorials/first-bootloader-flash.md)
+- Firmware operations: [`docs/how-to/upload-firmware.md`](docs/how-to/upload-firmware.md)
+- Architecture decisions (ADR): [`docs/explanation/architecture-decisions.md`](docs/explanation/architecture-decisions.md)
 
 ## Quick Start
 
