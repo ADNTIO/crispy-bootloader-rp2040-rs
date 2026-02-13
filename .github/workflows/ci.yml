@@ -17,6 +17,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Sync Cargo versions from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: ./scripts/ci/sync-cargo-version-from-tag.sh
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: thumbv6m-none-eabi
@@ -44,6 +48,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Sync Cargo versions from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: ./scripts/ci/sync-cargo-version-from-tag.sh
+
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Run tests
@@ -54,6 +62,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Sync Cargo versions from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: ./scripts/ci/sync-cargo-version-from-tag.sh
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -85,6 +97,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Sync Cargo versions from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: ./scripts/ci/sync-cargo-version-from-tag.sh
+
       - name: Install ARM toolchain
         run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi cmake
 
@@ -104,6 +120,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Sync Cargo versions from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: ./scripts/ci/sync-cargo-version-from-tag.sh
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -125,6 +145,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Sync Cargo versions from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: ./scripts/ci/sync-cargo-version-from-tag.sh
+
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build
@@ -145,6 +170,29 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Sync Cargo versions from tag
+        run: ./scripts/ci/sync-cargo-version-from-tag.sh
+
+      - name: Resolve release channel from tag
+        id: release_channel
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "${tag}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Tag '${tag}' must follow vX.Y.Z format." >&2
+            exit 1
+          fi
+
+          minor="${BASH_REMATCH[2]}"
+          # Official releases are only for even, non-zero minor versions.
+          if (( minor % 2 == 0 && minor != 0 )); then
+            echo "prerelease=false" >> "${GITHUB_OUTPUT}"
+            echo "make_latest=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "prerelease=true" >> "${GITHUB_OUTPUT}"
+            echo "make_latest=false" >> "${GITHUB_OUTPUT}"
+          fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -174,3 +222,5 @@ jobs:
         with:
           files: release/*
           generate_release_notes: true
+          prerelease: ${{ steps.release_channel.outputs.prerelease }}
+          make_latest: ${{ steps.release_channel.outputs.make_latest }}
