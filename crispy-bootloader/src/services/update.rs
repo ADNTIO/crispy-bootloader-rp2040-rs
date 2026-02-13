@@ -51,8 +51,6 @@ impl Service<Peripherals> for UpdateService {
             Initializing => {
                 // Initialize USB once
                 if let Some(mut usb) = ctx.peripherals.usb.take() {
-                    crispy_common::blink(&mut ctx.peripherals.led_pin, &mut ctx.peripherals.timer, 10, 50);
-
                     let usb_bus = usb_device::class_prelude::UsbBusAllocator::new(
                         rp2040_hal::usb::UsbBus::new(
                             usb.regs,
