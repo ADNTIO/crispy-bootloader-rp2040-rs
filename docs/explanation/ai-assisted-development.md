@@ -4,25 +4,23 @@ This project follows a human-in-the-loop AI-assisted development model.
 
 ## Definition
 
-- AI is used as a pair programmer for implementation support (drafting code, proposing refactors, surfacing issues).
-- A human keeps decision authority on intent, architecture, validation, and merge criteria.
-- Real hardware validation is the release gate for embedded behavior.
+- AI acts as a pair programmer (drafting code, proposing options, surfacing issues).
+- A human keeps final authority on intent, architecture, acceptance criteria, and merge decisions.
+- Real hardware validation is required for embedded runtime behavior.
 
 ## Why this model here
 
-- Embedded constraints are hardware-dependent and timing-sensitive.
-- Host-only checks are useful but not sufficient.
-- Human review plus hardware tests reduce risk from AI-generated mistakes.
+- Embedded behavior is timing-sensitive and hardware-dependent.
+- Host-only validation is useful but not sufficient.
+- Human review plus hardware tests reduce risk from AI-generated errors.
 
-## How it is applied in this repository
+## Repository application
 
-- Feature intent and acceptance criteria are human-defined.
-- Code is reviewed before merge.
-- Unit tests, integration tests, and deployment tests are used as quality gates.
-- Changes affecting runtime behavior are expected to be validated on RP2040 hardware.
+Implementation workflow and quality gates are documented in:
+
+- [Development methodology](development-methodology.md)
 
 ## Related documentation
 
-- [Development methodology](development-methodology.md)
 - [Architecture](architecture.md)
 - [Architecture decisions index](architecture-decisions.md)

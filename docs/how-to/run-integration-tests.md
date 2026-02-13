@@ -8,6 +8,10 @@ Integration tests run against real hardware over USB CDC.
 - Optional SWD probe for flash/reset automation
 - Python environment in `scripts/python/`
 
+Recommended first:
+
+- [Hardware test setup (Picoprobe + Pico target)](hardware-test-setup.md)
+
 ## Option 1: End-to-end script
 
 ```bash

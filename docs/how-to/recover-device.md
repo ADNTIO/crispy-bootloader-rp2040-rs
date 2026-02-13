@@ -2,6 +2,10 @@
 
 Use this guide when the board is in a bad state (boot loop, invalid bank, failed update).
 
+Hardware wiring reference:
+
+- [Hardware test setup (Picoprobe + Pico target)](hardware-test-setup.md)
+
 ## 1. Force update mode
 
 Choose one method:
