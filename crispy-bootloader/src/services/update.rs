@@ -80,15 +80,15 @@ impl Service<Peripherals> for UpdateService {
                 }
             }
             Idle | Receiving { .. } => {
-                // Poll USB and process one command at a time
+                // Poll USB and process all available commands
                 if let Some(ref mut transport) = *self.transport.borrow_mut() {
                     transport.poll();
 
-                    if let Some(cmd) = transport.try_receive() {
-                        update::dispatch_command(transport, state, cmd)
-                    } else {
-                        state
+                    let mut current_state = state;
+                    while let Some(cmd) = transport.try_receive() {
+                        current_state = update::dispatch_command(transport, current_state, cmd);
                     }
+                    current_state
                 } else {
                     state
                 }
