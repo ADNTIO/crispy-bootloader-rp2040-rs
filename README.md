@@ -9,6 +9,10 @@ A/B bootloader for RP2040 (Raspberry Pi Pico) written in Rust. The bootloader co
 from flash to RAM before executing it, and supports two banks for safe over-the-air updates
 via USB CDC.
 
+**Testable on a Raspberry Pi Pico** — flash the bootloader once via UF2 (BOOTSEL mode),
+then use `crispy-upload` to upload the sample firmwares over USB. No SWD probe needed
+for normal use.
+
 ```
          FLASH (2MB)                          RAM (256KB)
   ┌─────────────────────┐

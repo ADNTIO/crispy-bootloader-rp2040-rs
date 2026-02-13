@@ -3,12 +3,15 @@
 ## The Idea
 
 This project is built with an AI coding assistant. A human drives the intent, the AI
-helps write the code, and a real RP2040 board decides if it actually works.
+helps write the code, and a Raspberry Pi Pico decides if it actually works.
 
 Nothing gets merged into `main` unless it runs on hardware. Period.
 
 From there, we iterate: clean up the code, improve the architecture, refactor —
 all with the safety net of tests that run on the actual target.
+
+The goal is to evaluate whether AI-assisted development is effective for embedded
+software — and to improve the method along the way.
 
 ## How It Works
 
@@ -21,7 +24,7 @@ the driver.
 ### Test-Driven, Hardware First
 
 We don't trust "it compiles". We don't even fully trust unit tests on the host.
-The RP2040 is the source of truth.
+The Raspberry Pi Pico is the source of truth.
 
 The validation chain looks like this:
 
@@ -78,11 +81,24 @@ catches it before it ever reaches `main`.
 
 ## Why Bother
 
+The point of this project is to form an opinion on AI-assisted embedded development.
+Does it actually help? Where does it fall short? Can the method be improved?
+
 Embedded is not like web dev. You can't mock a flash controller that disables interrupts
-for 2ms. You can't simulate USB enumeration timing. The hardware *is* the spec.
+for 2ms. You can't simulate USB enumeration timing. The Raspberry Pi Pico *is* the spec.
+That makes it a good testbed: if AI-generated code works here, it works for real.
 
 This approach gives us:
-- **Fast iterations** thanks to AI assistance
-- **Real confidence** because every merge is hardware-proven
-- **Sustainable quality** because we refactor with a safety net
-- **Clean history** where each commit on `main` is a known-working state
+- **A real benchmark** — each iteration measures how well AI handles embedded constraints
+- **Real confidence** — every merge is hardware-proven on a Raspberry Pi Pico
+- **Sustainable quality** — we refactor with a safety net of hardware tests
+- **An evolving method** — each pass teaches us what works and what doesn't with AI
+
+## A Word of Honesty
+
+The code here is not perfect, and it won't pretend to be. I'm still junior in Rust,
+and this whole project is a learning process — both for the language and for working
+with AI on embedded systems.
+
+If you spot something wrong, something ugly, or something that could be done better:
+please say so. Issues, PRs, comments — all welcome. Criticism is how this gets better.
