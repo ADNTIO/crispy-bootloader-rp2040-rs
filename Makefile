@@ -103,11 +103,11 @@ test:
 # Integration tests (requires SWD probe + RP2040 board)
 # Override CRISPY_DEVICE if auto-detection doesn't work
 test-integration: all
-	cd scripts/python && . .venv/bin/activate && python -m pytest tests/test_integration.py -v
+	cd scripts/python && uv run pytest tests/test_integration.py -v
 
 # End-to-end deployment test (erase -> flash -> upload -> boot -> bank switch -> wipe)
 test-deployment: all firmware-cpp
-	cd scripts/python && uv run python -m pytest tests/test_deployment.py -v --tb=short
+	cd scripts/python && uv run pytest tests/test_deployment.py -v --tb=short
 
 # Clean
 clean:
