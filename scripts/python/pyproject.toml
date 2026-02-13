@@ -1,0 +1,15 @@
+[project]
+name = "crispy-bootloader-tests"
+version = "0.2.0"
+description = "Integration and deployment tests for Crispy RP2040 bootloader"
+requires-python = ">=3.12"
+dependencies = [
+    "pytest>=8.0",
+    "pyserial>=3.5",
+    "pytest-cov>=4.0",
+    "pytest-html>=4.0",
+    "pytest-metadata>=3.0",
+]
+
+[tool.uv]
+dev-dependencies = []
