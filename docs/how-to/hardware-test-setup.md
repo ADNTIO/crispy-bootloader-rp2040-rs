@@ -76,6 +76,6 @@ Probe Pico mapping with physical pin numbers:
 ## References
 
 - Raspberry Pi Debug Probe docs (wiring, UART pin `1-3`, SWD cable labels):  
-  https://www.raspberrypi.com/documentation/microcontrollers/debug-probe.html
+  [Raspberry Pi Debug Probe documentation](https://www.raspberrypi.com/documentation/microcontrollers/debug-probe.html)
 - `debugprobe_on_pico` GPIO mapping (`board_pico_config.h`):  
-  https://raw.githubusercontent.com/raspberrypi/debugprobe/master/include/board_pico_config.h
+  [`board_pico_config.h` (raw)](https://raw.githubusercontent.com/raspberrypi/debugprobe/master/include/board_pico_config.h)
