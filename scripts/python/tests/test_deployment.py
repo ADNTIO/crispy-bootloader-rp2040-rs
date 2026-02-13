@@ -32,6 +32,7 @@ from tests.conftest import (
     CHIP,
     enter_update_mode_via_swd,
     find_firmware_port,
+    flash_uf2,
     run_crispy_upload,
     wait_for_serial_banner,
 )
@@ -43,6 +44,7 @@ PID_FW_RUST = "000b"     # VID=2E8A, Rust firmware uses a distinct PID
 # Artifact paths (relative to project root)
 TARGET_DIR = Path("target/thumbv6m-none-eabi/release")
 BOOTLOADER_ELF = TARGET_DIR / "crispy-bootloader"
+BOOTLOADER_UF2 = TARGET_DIR / "crispy-bootloader.uf2"
 FW_RS_BIN = TARGET_DIR / "crispy-fw-sample-rs.bin"
 FW_CPP_BIN = Path("crispy-fw-sample-cpp/build/crispy-fw-sample-cpp.bin")
 
@@ -138,32 +140,31 @@ class TestDeployment:
             full = root / path
             assert full.exists(), f"Expected artifact not found: {full}"
 
-    def test_03_flash_bootloader(self, skip_flash):
-        """Flash the bootloader ELF via SWD and wait for USB enumeration."""
+    def test_03_flash_bootloader_uf2(self, skip_flash):
+        """Flash the bootloader UF2 via BOOTSEL mode and wait for USB enumeration.
+
+        Validates the user-facing UF2 flashing workflow:
+        invalidate boot2 → BOOTSEL → copy UF2 → reboot → bootloader running.
+        """
         if skip_flash:
             pytest.skip("Flash skipped (--skip-flash / CRISPY_SKIP_FLASH)")
 
         root = self._project_root()
-        elf = root / BOOTLOADER_ELF
+        uf2 = root / BOOTLOADER_UF2
 
-        # Flash bootloader
-        result = subprocess.run(
-            ["probe-rs", "download", "--chip", CHIP, str(elf)],
-            capture_output=True, text=True, timeout=30,
-        )
-        assert result.returncode == 0, (
-            f"probe-rs download failed:\n{result.stdout}\n{result.stderr}"
+        assert uf2.exists(), (
+            f"UF2 not found: {uf2}\n"
+            "Run 'make bootloader-uf2' first."
         )
 
-        # Reset the device
-        result = subprocess.run(
-            ["probe-rs", "reset", "--chip", CHIP],
-            capture_output=True, text=True, timeout=10,
-        )
-        assert result.returncode == 0, f"probe-rs reset failed:\n{result.stderr}"
+        # Flash via UF2 (force BOOTSEL → copy UF2 → device reboots)
+        assert flash_uf2(uf2), "Failed to flash bootloader via UF2"
 
-        # Wait for the bootloader to enumerate on USB
-        time.sleep(2.0)
+        # After reboot the bootloader finds no valid boot data (erased in
+        # test_01) and enters update mode automatically.  Belt-and-suspenders:
+        # re-erase boot data + write RAM magic to guarantee update mode.
+        assert enter_update_mode_via_swd(), "Failed to enter update mode via SWD"
+
         port = self._find_bootloader_port()
         print(f"Bootloader detected on {port}")
 
@@ -368,6 +369,9 @@ class TestDeployment:
 
         time.sleep(3.0)
         port = self._find_bootloader_port(timeout=15.0)
+
+        # Wait for CDC to be ready after USB enumeration
+        time.sleep(1.0)
 
         ok, stdout, stderr = run_crispy_upload(root, port, "status")
         assert ok, f"Status command failed:\n{stdout}\n{stderr}"

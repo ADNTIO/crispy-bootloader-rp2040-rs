@@ -80,25 +80,185 @@ def reset_device() -> bool:
     return success
 
 
+def erase_boot_data() -> bool:
+    """Erase boot data sector via SWD to invalidate firmware metadata."""
+    import tempfile
+
+    boot_data_addr = 0x1019_0000
+    sector = b"\xFF" * 4096
+    with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
+        f.write(sector)
+        blank_path = f.name
+    try:
+        success, output = run_probe_rs(
+            "download", "--chip", CHIP,
+            "--binary-format", "bin",
+            "--base-address", hex(boot_data_addr),
+            blank_path,
+        )
+        if not success:
+            print(f"Failed to erase boot data: {output}")
+        return success
+    finally:
+        Path(blank_path).unlink(missing_ok=True)
+
+
 def enter_update_mode_via_swd() -> bool:
-    """Enter bootloader update mode by writing RAM magic and resetting."""
+    """Enter bootloader update mode by erasing boot data and resetting.
+
+    Two-layer approach:
+    1. Erase boot data so the bootloader finds no valid firmware
+    2. Write RAM magic as a belt-and-suspenders trigger
+    3. Reset — bootloader enters update mode either via magic or
+       because no firmware exists (fallback in main loop)
+    """
     print("Entering update mode via SWD...")
-    # Write RAM magic value
-    success, output = run_probe_rs(
+
+    # Erase boot data — ensures bootloader can't boot any firmware
+    if not erase_boot_data():
+        print("Warning: failed to erase boot data, trying magic only")
+
+    # Write RAM magic (may or may not survive the race with reset)
+    run_probe_rs(
         "write", "--chip", CHIP, "b32",
         hex(RAM_UPDATE_FLAG_ADDR), hex(RAM_UPDATE_MAGIC)
     )
-    if not success:
-        print(f"Failed to write RAM magic: {output}")
-        return False
+
     # Reset device
-    time.sleep(0.1)
     success, output = run_probe_rs("reset", "--chip", CHIP)
     if not success:
         print(f"Failed to reset: {output}")
         return False
+
     # Wait for bootloader to initialize USB
+    time.sleep(3.0)
+    return True
+
+
+def force_bootsel_mode() -> bool:
+    """Force RP2040 into BOOTSEL mode by invalidating boot2 via SWD.
+
+    Writes zeros over the boot2 area (first 256 bytes at 0x10000000) so
+    the ROM CRC check fails, then resets.  The ROM bootloader enters USB
+    mass-storage mode (BOOTSEL) because it cannot find a valid stage-2.
+    """
+    import tempfile
+
+    print("Forcing BOOTSEL mode (invalidating boot2 via SWD)...")
+
+    zeros = b"\x00" * 256
+    with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
+        f.write(zeros)
+        blank_path = f.name
+    try:
+        success, output = run_probe_rs(
+            "download", "--chip", CHIP,
+            "--binary-format", "bin",
+            "--base-address", "0x10000000",
+            blank_path,
+        )
+        if not success:
+            print(f"Failed to invalidate boot2: {output}")
+            return False
+    finally:
+        Path(blank_path).unlink(missing_ok=True)
+
+    # Reset — ROM finds invalid boot2 → BOOTSEL
+    success, output = run_probe_rs("reset", "--chip", CHIP)
+    if not success:
+        print(f"Failed to reset after boot2 erase: {output}")
+        return False
+
+    return True
+
+
+def find_rpi_rp2_mount(timeout: float = 15.0) -> Path:
+    """Wait for the RPI-RP2 mass-storage drive and return its mount point.
+
+    Polls ``/proc/mounts`` for a filesystem whose mount path contains
+    ``RPI-RP2``.  If the drive appears as a block device but is not yet
+    mounted, attempts to mount it via ``udisksctl``.
+
+    Raises ``TimeoutError`` if the drive is not found within *timeout* seconds.
+    """
+    import json
+
+    start = time.time()
+    while time.time() - start < timeout:
+        # Fast path: check /proc/mounts
+        try:
+            with open("/proc/mounts") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 2 and "RPI-RP2" in parts[1]:
+                        return Path(parts[1])
+        except OSError:
+            pass
+
+        # Slow path: find unmounted block device via lsblk and mount it
+        try:
+            result = subprocess.run(
+                ["lsblk", "-J", "-o", "NAME,LABEL,MOUNTPOINT"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                for dev in _walk_lsblk(data.get("blockdevices", [])):
+                    if dev.get("label") == "RPI-RP2":
+                        mp = dev.get("mountpoint")
+                        if mp:
+                            return Path(mp)
+                        # Try auto-mount
+                        name = dev["name"]
+                        subprocess.run(
+                            ["udisksctl", "mount", "-b", f"/dev/{name}"],
+                            capture_output=True, text=True, timeout=10,
+                        )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+        time.sleep(0.5)
+
+    raise TimeoutError(f"RPI-RP2 drive not found within {timeout}s")
+
+
+def _walk_lsblk(devices):
+    """Recursively yield devices from a ``lsblk -J`` tree."""
+    for dev in devices:
+        yield dev
+        for child in dev.get("children", []):
+            yield child
+            yield from _walk_lsblk(child.get("children", []))
+
+
+def flash_uf2(uf2_path: Path, timeout: float = 15.0) -> bool:
+    """Flash a UF2 file via BOOTSEL mass-storage mode.
+
+    1. Forces BOOTSEL mode (invalidate boot2 + reset via SWD).
+    2. Waits for the ``RPI-RP2`` drive to appear.
+    3. Copies the UF2 file; the RP2040 reboots automatically.
+    """
+    import shutil
+
+    if not force_bootsel_mode():
+        return False
+
+    # Give time for USB mass-storage enumeration
     time.sleep(2.0)
+
+    try:
+        mount = find_rpi_rp2_mount(timeout=timeout)
+    except TimeoutError:
+        print("RPI-RP2 mass-storage not found")
+        return False
+
+    print(f"Copying {uf2_path.name} to {mount} ...")
+    shutil.copy2(str(uf2_path), str(mount / uf2_path.name))
+    subprocess.run(["sync"], check=True)
+
+    # Device reboots automatically after UF2 is written
+    print("UF2 copied — waiting for device reboot ...")
+    time.sleep(3.0)
     return True
 
 
@@ -284,7 +444,7 @@ def transport(device_in_update_mode):
 
     # Find the bootloader port
     try:
-        port = find_bootloader_port(timeout=5.0)
+        port = find_bootloader_port(timeout=10.0)
     except TimeoutError:
         pytest.fail("Bootloader serial port not found after reset")
 

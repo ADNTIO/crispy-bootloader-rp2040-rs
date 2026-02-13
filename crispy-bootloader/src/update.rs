@@ -6,48 +6,32 @@
 //! This module implements the update protocol:
 //! - GetStatus: Query current bootloader state
 //! - StartUpdate: Begin firmware upload to a bank
-//! - DataBlock: Send firmware data chunks
-//! - FinishUpdate: Verify CRC and commit the update
+//! - DataBlock: Send firmware data chunks (accumulated in RAM)
+//! - FinishUpdate: Persist to flash, verify CRC and commit the update
 //! - Reboot: Restart the device
 
 use crate::flash;
-use crate::peripherals::{self, Peripherals};
 use crate::usb_transport::UsbTransport;
 use crispy_common::protocol::*;
-use embedded_hal::digital::OutputPin;
-use rp2040_hal as hal;
-use usb_device::class_prelude::UsbBusAllocator;
 
-/// Enter update mode: initialize USB and run the update loop.
-pub fn enter_update_mode(p: &mut Peripherals) -> ! {
-    defmt::println!("Update mode requested");
+/// Maximum firmware size that can be buffered in RAM
+/// We use the firmware RAM region (0x20000000 - 0x20030000, 192KB) which is
+/// unused during bootloader operation.
+const FW_RAM_BUFFER_SIZE: usize = 128 * 1024;
 
-    crispy_common::blink(&mut p.led_pin, &mut p.timer, 10, 50);
-
-    let mut usb = p.usb.take().expect("USB peripherals already taken");
-
-    let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
-        usb.regs,
-        usb.dpram,
-        usb.clock,
-        true,
-        &mut usb.resets,
-    ));
-
-    peripherals::store_usb_bus(usb_bus);
-    let mut transport = UsbTransport::new(peripherals::usb_bus_ref());
-
-    defmt::println!("USB CDC initialized, entering update loop");
-    p.led_pin.set_high().ok();
-
-    run_update_mode(&mut transport)
-}
+/// RAM buffer address in firmware region (unused during bootloader operation)
+const FW_RAM_BUFFER_ADDR: *mut u8 = 0x20000000 as *mut u8;
 
 /// Update state machine states.
-enum UpdateState {
+#[derive(Clone, Copy, defmt::Format)]
+pub enum UpdateState {
+    /// Inactive - not in update mode
+    Inactive,
+    /// Initializing USB
+    Initializing,
     /// Waiting for a new update to start.
     Idle,
-    /// Actively receiving firmware data.
+    /// Actively receiving firmware data (accumulating in RAM).
     Receiving {
         bank: u8,
         bank_addr: u32,
@@ -56,23 +40,23 @@ enum UpdateState {
         version: u32,
         bytes_received: u32,
     },
-}
-
-/// Run the update mode loop. Does not return (reboot via SCB::sys_reset).
-pub fn run_update_mode(transport: &mut UsbTransport) -> ! {
-    let mut state = UpdateState::Idle;
-
-    loop {
-        transport.poll();
-
-        if let Some(cmd) = transport.try_receive() {
-            state = handle_command(transport, state, cmd);
-        }
-    }
+    /// Persisting firmware from RAM to flash (no USB commands processed).
+    #[allow(dead_code)]
+    Persisting {
+        bank: u8,
+        bank_addr: u32,
+        size: u32,
+        crc: u32,
+        version: u32,
+    },
 }
 
 /// Dispatch a command to its handler.
-fn handle_command(transport: &mut UsbTransport, state: UpdateState, cmd: Command) -> UpdateState {
+pub fn dispatch_command(
+    transport: &mut UsbTransport,
+    state: UpdateState,
+    cmd: Command,
+) -> UpdateState {
     match cmd {
         Command::GetStatus => handle_get_status(transport, state),
         Command::StartUpdate {
@@ -91,17 +75,22 @@ fn handle_command(transport: &mut UsbTransport, state: UpdateState, cmd: Command
 
 /// Handle GetStatus command: return current bootloader status.
 fn handle_get_status(transport: &mut UsbTransport, state: UpdateState) -> UpdateState {
+    defmt::println!("handle_get_status called");
     let bd = flash::read_boot_data();
     let boot_state = match &state {
+        UpdateState::Inactive => BootState::UpdateMode,
+        UpdateState::Initializing => BootState::UpdateMode,
         UpdateState::Idle => BootState::UpdateMode,
         UpdateState::Receiving { .. } => BootState::Receiving,
+        UpdateState::Persisting { .. } => BootState::Receiving,
     };
-    transport.send(&Response::Status {
+    let success = transport.send(&Response::Status {
         active_bank: bd.active_bank,
         version_a: bd.version_a,
         version_b: bd.version_b,
         state: boot_state,
     });
+    defmt::println!("handle_get_status: send returned {}", success);
     state
 }
 
@@ -126,21 +115,33 @@ fn handle_start_update(
         return state;
     }
 
-    // Validate size
-    if size == 0 || size > FW_BANK_SIZE {
+    // Validate size fits in RAM buffer
+    if size == 0 || size > FW_RAM_BUFFER_SIZE as u32 {
+        defmt::warn!(
+            "Firmware size {} exceeds RAM buffer {}",
+            size,
+            FW_RAM_BUFFER_SIZE
+        );
+        transport.send(&Response::Ack(AckStatus::BankInvalid));
+        return state;
+    }
+
+    // Also check against flash bank size
+    if size > FW_BANK_SIZE {
         transport.send(&Response::Ack(AckStatus::BankInvalid));
         return state;
     }
 
     let bank_addr = if bank == 0 { FW_A_ADDR } else { FW_B_ADDR };
 
-    // Erase the entire bank (rounded up to sector boundary)
-    let erase_size = size.div_ceil(FLASH_SECTOR_SIZE) * FLASH_SECTOR_SIZE;
-    let offset = flash::addr_to_offset(bank_addr);
-    unsafe {
-        flash::flash_erase(offset, erase_size);
-    }
+    // No need to initialize RAM buffer - we'll overwrite it with firmware data
+    // The buffer resides in unused firmware RAM region
 
+    defmt::println!(
+        "StartUpdate: bank={}, size={}, will buffer in RAM",
+        bank,
+        size
+    );
     transport.send(&Response::Ack(AckStatus::Ok));
 
     UpdateState::Receiving {
@@ -160,19 +161,37 @@ fn handle_data_block(
     offset: u32,
     data: heapless::Vec<u8, MAX_DATA_BLOCK_SIZE>,
 ) -> UpdateState {
+    defmt::println!(
+        "handle_data_block: offset={}, data_len={}",
+        offset,
+        data.len()
+    );
+
     let UpdateState::Receiving {
-        bank_addr,
+        bank_addr: _,
         ref mut bytes_received,
         expected_size,
         ..
     } = state
     else {
+        defmt::warn!("handle_data_block: BadState");
         transport.send(&Response::Ack(AckStatus::BadState));
         return state;
     };
 
+    defmt::println!(
+        "handle_data_block: bytes_received={}, expected={}",
+        *bytes_received,
+        expected_size
+    );
+
     // Validate sequential offset
     if offset != *bytes_received {
+        defmt::warn!(
+            "handle_data_block: BadOffset {} != {}",
+            offset,
+            *bytes_received
+        );
         transport.send(&Response::Ack(AckStatus::BadCommand));
         return state;
     }
@@ -180,27 +199,37 @@ fn handle_data_block(
     // Validate data doesn't exceed expected size
     let data_len = data.len() as u32;
     if *bytes_received + data_len > expected_size {
+        defmt::warn!("handle_data_block: Size overflow");
         transport.send(&Response::Ack(AckStatus::BadCommand));
         return state;
     }
 
-    // Pad data to 256-byte page boundary for flash programming
-    let mut page_buf = [0xFFu8; MAX_DATA_BLOCK_SIZE + FLASH_PAGE_SIZE as usize];
-    let actual_len = data.len();
-    page_buf[..actual_len].copy_from_slice(&data);
-    let padded_len = actual_len.div_ceil(FLASH_PAGE_SIZE as usize) * FLASH_PAGE_SIZE as usize;
+    // Copy data to RAM buffer (NO flash writes, interrupts stay enabled!)
+    let ram_offset = *bytes_received as usize;
+    defmt::println!(
+        "handle_data_block: Copying {} bytes to RAM at offset {}",
+        data_len,
+        ram_offset
+    );
 
-    let flash_offset = flash::addr_to_offset(bank_addr) + *bytes_received;
     unsafe {
-        flash::flash_program(flash_offset, page_buf.as_ptr(), padded_len);
+        core::ptr::copy_nonoverlapping(
+            data.as_ptr(),
+            FW_RAM_BUFFER_ADDR.add(ram_offset),
+            data_len as usize,
+        );
     }
 
     *bytes_received += data_len;
-    transport.send(&Response::Ack(AckStatus::Ok));
+
+    // Send ACK immediately (fast, no flash delays!)
+    defmt::println!("handle_data_block: Sending ACK");
+    let success = transport.send(&Response::Ack(AckStatus::Ok));
+    defmt::println!("handle_data_block: ACK sent, success={}", success);
     state
 }
 
-/// Handle FinishUpdate command: verify CRC, update BootData.
+/// Handle FinishUpdate command: persist RAM buffer to flash, verify CRC, update BootData.
 fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> UpdateState {
     let UpdateState::Receiving {
         bank,
@@ -215,8 +244,13 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
         return state;
     };
 
-    // Verify all data was received
+    // Verify all data was received in RAM
     if bytes_received != expected_size {
+        defmt::warn!(
+            "FinishUpdate: Incomplete data {} != {}",
+            bytes_received,
+            expected_size
+        );
         transport.send(&Response::Ack(AckStatus::BadCommand));
         return UpdateState::Receiving {
             bank,
@@ -228,13 +262,59 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
         };
     }
 
-    // Verify CRC
-    let actual_crc = flash::compute_crc32(bank_addr, expected_size);
-    if actual_crc != expected_crc {
-        defmt::println!(
-            "CRC mismatch: expected 0x{:08x}, got 0x{:08x}",
+    defmt::println!("FinishUpdate: Verifying CRC of RAM buffer");
+    // Verify CRC of RAM buffer BEFORE writing to flash
+    let ram_crc = unsafe {
+        use crc::{Crc, CRC_32_ISO_HDLC};
+        const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+        let mut digest = CRC32.digest();
+        let ram_slice = core::slice::from_raw_parts(FW_RAM_BUFFER_ADDR, expected_size as usize);
+        digest.update(ram_slice);
+        digest.finalize()
+    };
+
+    if ram_crc != expected_crc {
+        defmt::warn!(
+            "FinishUpdate: CRC mismatch in RAM: expected 0x{:08x}, got 0x{:08x}",
             expected_crc,
-            actual_crc
+            ram_crc
+        );
+        transport.send(&Response::Ack(AckStatus::CrcError));
+        return UpdateState::Idle;
+    }
+
+    defmt::println!("FinishUpdate: CRC OK, persisting to flash...");
+
+    // Erase flash bank (this takes time but no USB commands are expected now)
+    let erase_size = expected_size.div_ceil(FLASH_SECTOR_SIZE) * FLASH_SECTOR_SIZE;
+    let flash_offset = flash::addr_to_offset(bank_addr);
+    unsafe {
+        flash::flash_erase(flash_offset, erase_size);
+    }
+
+    // Write RAM buffer to flash (page by page to respect flash alignment)
+    let mut offset = 0u32;
+    while offset < expected_size {
+        let chunk_size = (expected_size - offset).min(FLASH_PAGE_SIZE);
+        let padded_size = chunk_size.div_ceil(FLASH_PAGE_SIZE) * FLASH_PAGE_SIZE;
+
+        unsafe {
+            let src_ptr = FW_RAM_BUFFER_ADDR.add(offset as usize) as *const u8;
+            flash::flash_program(flash_offset + offset, src_ptr, padded_size as usize);
+        }
+
+        offset += chunk_size;
+    }
+
+    defmt::println!("FinishUpdate: Flash write complete, verifying...");
+
+    // Verify CRC from flash
+    let flash_crc = flash::compute_crc32(bank_addr, expected_size);
+    if flash_crc != expected_crc {
+        defmt::error!(
+            "FinishUpdate: Flash CRC mismatch: expected 0x{:08x}, got 0x{:08x}",
+            expected_crc,
+            flash_crc
         );
         transport.send(&Response::Ack(AckStatus::CrcError));
         return UpdateState::Idle;

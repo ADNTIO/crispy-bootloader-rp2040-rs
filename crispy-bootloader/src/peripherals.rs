@@ -7,6 +7,11 @@ use rp2040_hal as hal;
 use rp2040_hal::usb::UsbBus;
 use usb_device::class_prelude::UsbBusAllocator;
 
+#[derive(Debug, defmt::Format)]
+pub enum InitError {
+    ClockInitFailed,
+}
+
 pub type LedPin =
     hal::gpio::Pin<hal::gpio::bank0::Gpio25, hal::gpio::FunctionSioOutput, hal::gpio::PullDown>;
 pub type Gp2Pin =
@@ -15,8 +20,16 @@ pub type Gp2Pin =
 /// Static storage for UsbBusAllocator (required by usb-device for 'static lifetime).
 static mut USB_BUS: Option<UsbBusAllocator<UsbBus>> = None;
 
+/// Get reference to the USB bus allocator.
+///
+/// # Panics
+/// Panics if called before `store_usb_bus()`.
 pub fn usb_bus_ref() -> &'static UsbBusAllocator<UsbBus> {
-    unsafe { (*core::ptr::addr_of!(USB_BUS)).as_ref().unwrap() }
+    unsafe {
+        (*core::ptr::addr_of!(USB_BUS))
+            .as_ref()
+            .expect("USB bus not initialized - store_usb_bus() must be called first")
+    }
 }
 
 pub fn store_usb_bus(bus: UsbBusAllocator<UsbBus>) {
@@ -39,7 +52,14 @@ pub struct UsbPeripherals {
     pub resets: hal::pac::RESETS,
 }
 
-pub fn init() -> Peripherals {
+/// Initialize all peripherals for the bootloader.
+///
+/// # Safety
+/// This function uses `steal()` to take peripheral singletons, which is safe
+/// in a bootloader context since we're the first code running and have exclusive
+/// access to hardware. Must only be called once at startup.
+pub fn init() -> Result<Peripherals, InitError> {
+    // SAFETY: In bootloader context, we're the first code running with exclusive hardware access
     let mut pac = unsafe { hal::pac::Peripherals::steal() };
 
     let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);
@@ -52,7 +72,7 @@ pub fn init() -> Peripherals {
         &mut pac.RESETS,
         &mut watchdog,
     )
-    .unwrap();
+    .map_err(|_| InitError::ClockInitFailed)?;
 
     let timer = hal::Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
     let sio = hal::Sio::new(pac.SIO);
@@ -63,7 +83,7 @@ pub fn init() -> Peripherals {
         &mut pac.RESETS,
     );
 
-    Peripherals {
+    Ok(Peripherals {
         led_pin: pins.gpio25.into_push_pull_output(),
         gp2: pins.gpio2.into_pull_up_input(),
         timer,
@@ -73,5 +93,5 @@ pub fn init() -> Peripherals {
             clock: clocks.usb_clock,
             resets: pac.RESETS,
         }),
-    }
+    })
 }

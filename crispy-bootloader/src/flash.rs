@@ -15,6 +15,7 @@
 //! We use `#[link_section = ".data"]` to place critical functions in RAM,
 //! and pre-resolve all ROM function pointers at init time.
 
+use core::sync::atomic::{AtomicUsize, Ordering};
 use crc::{Crc, CRC_32_ISO_HDLC};
 use crispy_common::protocol::{
     BootData, BOOT_DATA_ADDR, FLASH_BASE, FLASH_PAGE_SIZE, FLASH_SECTOR_SIZE,
@@ -22,33 +23,38 @@ use crispy_common::protocol::{
 
 const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
 
+// RP2040 ROM table addresses (defined in RP2040 datasheet section 2.8.3)
+/// Pointer to the ROM function table (16-bit pointer stored at 0x14)
+const ROM_FUNC_TABLE_PTR: *const u16 = 0x0000_0014 as *const u16;
+/// Pointer to the ROM table lookup function (16-bit pointer stored at 0x18)
+const ROM_TABLE_LOOKUP_PTR: *const u16 = 0x0000_0018 as *const u16;
+
 // ROM function pointer types
 type RomFnVoid = unsafe extern "C" fn();
 type RomFnErase = unsafe extern "C" fn(u32, usize, u32, u8);
 type RomFnProgram = unsafe extern "C" fn(u32, *const u8, usize);
 
 /// ROM function pointers, resolved once at init from the ROM table.
-/// Stored in static RAM so RAM-resident functions can call them without
-/// accessing flash-based code.
-static mut ROM_CONNECT_INTERNAL_FLASH: RomFnVoid = dummy_void;
-static mut ROM_FLASH_EXIT_XIP: RomFnVoid = dummy_void;
-static mut ROM_FLASH_RANGE_ERASE: RomFnErase = dummy_erase;
-static mut ROM_FLASH_RANGE_PROGRAM: RomFnProgram = dummy_program;
-static mut ROM_FLASH_FLUSH_CACHE: RomFnVoid = dummy_void;
-static mut ROM_FLASH_ENTER_CMD_XIP: RomFnVoid = dummy_void;
-
-unsafe extern "C" fn dummy_void() {}
-unsafe extern "C" fn dummy_erase(_: u32, _: usize, _: u32, _: u8) {}
-unsafe extern "C" fn dummy_program(_: u32, _: *const u8, _: usize) {}
+/// Using AtomicUsize for thread-safe initialization without static mut.
+static ROM_CONNECT_INTERNAL_FLASH: AtomicUsize = AtomicUsize::new(0);
+static ROM_FLASH_EXIT_XIP: AtomicUsize = AtomicUsize::new(0);
+static ROM_FLASH_RANGE_ERASE: AtomicUsize = AtomicUsize::new(0);
+static ROM_FLASH_RANGE_PROGRAM: AtomicUsize = AtomicUsize::new(0);
+static ROM_FLASH_FLUSH_CACHE: AtomicUsize = AtomicUsize::new(0);
+static ROM_FLASH_ENTER_CMD_XIP: AtomicUsize = AtomicUsize::new(0);
 
 /// Look up a ROM function by its two-character tag.
-/// ROM table pointer at 0x14 and lookup function at 0x18 are 16-bit halfword pointers.
+/// Uses RP2040 ROM table as documented in datasheet section 2.8.3.
 unsafe fn rom_func_lookup(tag: &[u8; 2]) -> usize {
-    let fn_table = *(0x14 as *const u16) as *const u16;
+    // Read function table pointer (stored as 16-bit value)
+    let fn_table = *ROM_FUNC_TABLE_PTR as *const u16;
+
+    // Read and call the ROM table lookup function
     let lookup: unsafe extern "C" fn(*const u16, u32) -> usize =
         core::mem::transmute::<usize, unsafe extern "C" fn(*const u16, u32) -> usize>(
-            *(0x18 as *const u16) as usize,
+            *ROM_TABLE_LOOKUP_PTR as usize,
         );
+
     let code = u16::from_le_bytes(*tag) as u32;
     lookup(fn_table, code)
 }
@@ -57,14 +63,12 @@ unsafe fn rom_func_lookup(tag: &[u8; 2]) -> usize {
 /// This performs ROM table lookups which require XIP to be active.
 pub fn init() {
     unsafe {
-        ROM_CONNECT_INTERNAL_FLASH =
-            core::mem::transmute::<usize, RomFnVoid>(rom_func_lookup(b"IF"));
-        ROM_FLASH_EXIT_XIP = core::mem::transmute::<usize, RomFnVoid>(rom_func_lookup(b"EX"));
-        ROM_FLASH_RANGE_ERASE = core::mem::transmute::<usize, RomFnErase>(rom_func_lookup(b"RE"));
-        ROM_FLASH_RANGE_PROGRAM =
-            core::mem::transmute::<usize, RomFnProgram>(rom_func_lookup(b"RP"));
-        ROM_FLASH_FLUSH_CACHE = core::mem::transmute::<usize, RomFnVoid>(rom_func_lookup(b"FC"));
-        ROM_FLASH_ENTER_CMD_XIP = core::mem::transmute::<usize, RomFnVoid>(rom_func_lookup(b"CX"));
+        ROM_CONNECT_INTERNAL_FLASH.store(rom_func_lookup(b"IF"), Ordering::Release);
+        ROM_FLASH_EXIT_XIP.store(rom_func_lookup(b"EX"), Ordering::Release);
+        ROM_FLASH_RANGE_ERASE.store(rom_func_lookup(b"RE"), Ordering::Release);
+        ROM_FLASH_RANGE_PROGRAM.store(rom_func_lookup(b"RP"), Ordering::Release);
+        ROM_FLASH_FLUSH_CACHE.store(rom_func_lookup(b"FC"), Ordering::Release);
+        ROM_FLASH_ENTER_CMD_XIP.store(rom_func_lookup(b"CX"), Ordering::Release);
     }
 }
 
@@ -81,12 +85,20 @@ pub fn addr_to_offset(abs_addr: u32) -> u32 {
 #[link_section = ".data"]
 #[inline(never)]
 pub unsafe fn flash_erase(offset: u32, size: u32) {
+    let connect: RomFnVoid =
+        core::mem::transmute(ROM_CONNECT_INTERNAL_FLASH.load(Ordering::Acquire));
+    let exit_xip: RomFnVoid = core::mem::transmute(ROM_FLASH_EXIT_XIP.load(Ordering::Acquire));
+    let erase: RomFnErase = core::mem::transmute(ROM_FLASH_RANGE_ERASE.load(Ordering::Acquire));
+    let flush: RomFnVoid = core::mem::transmute(ROM_FLASH_FLUSH_CACHE.load(Ordering::Acquire));
+    let enter_xip: RomFnVoid =
+        core::mem::transmute(ROM_FLASH_ENTER_CMD_XIP.load(Ordering::Acquire));
+
     cortex_m::interrupt::disable();
-    ROM_CONNECT_INTERNAL_FLASH();
-    ROM_FLASH_EXIT_XIP();
-    ROM_FLASH_RANGE_ERASE(offset, size as usize, FLASH_SECTOR_SIZE, 0x20);
-    ROM_FLASH_FLUSH_CACHE();
-    ROM_FLASH_ENTER_CMD_XIP();
+    connect();
+    exit_xip();
+    erase(offset, size as usize, FLASH_SECTOR_SIZE, 0x20);
+    flush();
+    enter_xip();
     cortex_m::interrupt::enable();
 }
 
@@ -98,12 +110,21 @@ pub unsafe fn flash_erase(offset: u32, size: u32) {
 #[link_section = ".data"]
 #[inline(never)]
 pub unsafe fn flash_program(offset: u32, data: *const u8, len: usize) {
+    let connect: RomFnVoid =
+        core::mem::transmute(ROM_CONNECT_INTERNAL_FLASH.load(Ordering::Acquire));
+    let exit_xip: RomFnVoid = core::mem::transmute(ROM_FLASH_EXIT_XIP.load(Ordering::Acquire));
+    let program: RomFnProgram =
+        core::mem::transmute(ROM_FLASH_RANGE_PROGRAM.load(Ordering::Acquire));
+    let flush: RomFnVoid = core::mem::transmute(ROM_FLASH_FLUSH_CACHE.load(Ordering::Acquire));
+    let enter_xip: RomFnVoid =
+        core::mem::transmute(ROM_FLASH_ENTER_CMD_XIP.load(Ordering::Acquire));
+
     cortex_m::interrupt::disable();
-    ROM_CONNECT_INTERNAL_FLASH();
-    ROM_FLASH_EXIT_XIP();
-    ROM_FLASH_RANGE_PROGRAM(offset, data, len);
-    ROM_FLASH_FLUSH_CACHE();
-    ROM_FLASH_ENTER_CMD_XIP();
+    connect();
+    exit_xip();
+    program(offset, data, len);
+    flush();
+    enter_xip();
     cortex_m::interrupt::enable();
 }
 

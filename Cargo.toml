@@ -14,7 +14,3 @@ lto = false
 
 [profile.dev]
 opt-level = 1
-
-# Patch to fix MPU bug in rp2040-hal
-[patch.crates-io]
-rp2040-hal = { git = "https://github.com/rp-rs/rp-hal", branch = "main" }

@@ -118,7 +118,7 @@ namespace crispy {
 
 ## File structure
 
-```
+```text
 crispy-sdk-cpp/
 ├── CMakeLists.txt
 ├── README.md

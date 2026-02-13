@@ -1,0 +1,12 @@
+globs:
+  - "**/*.md"
+  - "!target/**"
+  - "!.git/**"
+  - "!**/node_modules/**"
+  - "!**/build/**"
+
+config:
+  default: true
+  MD013: false
+  MD024:
+    siblings_only: true

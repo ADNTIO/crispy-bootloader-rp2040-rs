@@ -24,13 +24,11 @@ macro_rules! linker_addr {
     };
 }
 
-#[allow(dead_code)]
 pub struct MemoryLayout {
     pub fw_a: u32,
     pub fw_b: u32,
     pub ram_base: u32,
     pub copy_size: u32,
-    pub boot_data: u32,
 }
 
 impl MemoryLayout {
@@ -40,7 +38,6 @@ impl MemoryLayout {
             fw_b: linker_addr!(__fw_b_entry),
             ram_base: linker_addr!(__fw_ram_base),
             copy_size: linker_addr!(__fw_copy_size),
-            boot_data: linker_addr!(__boot_data_addr),
         }
     }
 }
@@ -203,83 +200,28 @@ pub unsafe fn load_and_jump(flash_addr: u32, layout: &MemoryLayout) -> ! {
 /// Clocks are left configured - SDK's runtime_init_clocks handles this
 /// by switching away from PLLs before reconfiguring them.
 unsafe fn prepare_for_firmware_handoff() {
+    use cortex_m::peripheral::NVIC;
+
     // Disable all interrupts
     cortex_m::interrupt::disable();
 
-    // Clear all pending interrupts in NVIC
-    const NVIC_ICPR: *mut u32 = 0xE000_E280 as *mut u32;
-    NVIC_ICPR.write_volatile(0xFFFF_FFFF);
+    // SAFETY: We're in bootloader context and need to reset NVIC state before handoff
+    let nvic = &*NVIC::PTR;
+
+    // Clear all pending interrupts in NVIC (32 interrupt lines on Cortex-M0+)
+    nvic.icpr[0].write(0xFFFF_FFFF);
 
     // Disable all NVIC interrupts
-    const NVIC_ICER: *mut u32 = 0xE000_E180 as *mut u32;
-    NVIC_ICER.write_volatile(0xFFFF_FFFF);
+    nvic.icer[0].write(0xFFFF_FFFF);
 
     // NOTE: Clocks are NOT reset - SDK handles this by switching
     // clk_sys to clk_ref before touching PLLs
 }
 
-/// Reset clocks to power-on reset state:
-/// - clk_sys runs from clk_ref
-/// - clk_ref runs from ROSC
-/// - XOSC disabled
-/// - PLLs in reset
-/// - Watchdog tick disabled
-#[allow(dead_code)]
-unsafe fn reset_clocks_to_power_on_state() {
-    // RP2040 clock register base addresses
-    const CLOCKS_BASE: u32 = 0x4000_8000;
-    const CLK_REF_CTRL: *mut u32 = (CLOCKS_BASE + 0x30) as *mut u32;
-    const CLK_REF_SELECTED: *const u32 = (CLOCKS_BASE + 0x38) as *const u32;
-    const CLK_SYS_CTRL: *mut u32 = (CLOCKS_BASE + 0x3C) as *mut u32;
-    const CLK_SYS_SELECTED: *const u32 = (CLOCKS_BASE + 0x44) as *const u32;
-
-    const XOSC_BASE: u32 = 0x4002_4000;
-    const XOSC_CTRL: *mut u32 = XOSC_BASE as *mut u32;
-
-    const RESETS_BASE: u32 = 0x4000_C000;
-    const RESETS_RESET: *mut u32 = RESETS_BASE as *mut u32;
-
-    const WATCHDOG_BASE: u32 = 0x4005_8000;
-    const WATCHDOG_TICK: *mut u32 = (WATCHDOG_BASE + 0x2C) as *mut u32;
-
-    const PLL_SYS_RESET_BIT: u32 = 1 << 12;
-    const PLL_USB_RESET_BIT: u32 = 1 << 13;
-
-    // Step 1: Switch clk_sys to clk_ref (SRC=0)
-    // Clear SRC bit to select clk_ref as source
-    let ctrl = CLK_SYS_CTRL.read_volatile();
-    CLK_SYS_CTRL.write_volatile(ctrl & !0x1);
-    // Wait for switch to complete
-    while CLK_SYS_SELECTED.read_volatile() != 0x1 {
-        core::hint::spin_loop();
-    }
-
-    // Step 2: Switch clk_ref to ROSC (SRC=0)
-    // Clear SRC bits to select ROSC
-    let ctrl = CLK_REF_CTRL.read_volatile();
-    CLK_REF_CTRL.write_volatile(ctrl & !0x3);
-    // Wait for switch to complete
-    while CLK_REF_SELECTED.read_volatile() != 0x1 {
-        core::hint::spin_loop();
-    }
-
-    // Step 3: Disable XOSC
-    // Write DISABLE magic to XOSC_CTRL.ENABLE
-    const XOSC_CTRL_DISABLE: u32 = 0xD1E << 12;
-    let ctrl = XOSC_CTRL.read_volatile();
-    XOSC_CTRL.write_volatile((ctrl & !0x00FFF000) | XOSC_CTRL_DISABLE);
-
-    // Step 4: Put PLLs into reset
-    let reset = RESETS_RESET.read_volatile();
-    RESETS_RESET.write_volatile(reset | PLL_SYS_RESET_BIT | PLL_USB_RESET_BIT);
-
-    // Step 5: Disable watchdog tick
-    WATCHDOG_TICK.write_volatile(0);
-
-    // Memory barriers
-    cortex_m::asm::dsb();
-    cortex_m::asm::isb();
-}
+// NOTE: Clock reset is not performed during firmware handoff.
+// The SDK's runtime_init_clocks handles clock reconfiguration by switching
+// away from PLLs before modifying them. If future requirements change,
+// reference implementation for resetting clocks is available in git history.
 
 unsafe fn copy_firmware_to_ram(flash_addr: u32, layout: &MemoryLayout) {
     core::ptr::copy_nonoverlapping(
@@ -290,10 +232,13 @@ unsafe fn copy_firmware_to_ram(flash_addr: u32, layout: &MemoryLayout) {
 }
 
 unsafe fn relocate_vector_table(ram_base: u32) {
+    use cortex_m::peripheral::SCB;
+
     cortex_m::interrupt::disable();
 
-    const SCB_VTOR: *mut u32 = 0xE000_ED08 as *mut u32;
-    SCB_VTOR.write_volatile(ram_base);
+    // SAFETY: We're setting VTOR to point to the firmware's vector table in RAM
+    let scb = &*SCB::PTR;
+    scb.vtor.write(ram_base);
 
     cortex_m::asm::dsb();
     cortex_m::asm::isb();
@@ -311,8 +256,8 @@ unsafe fn jump_to_firmware(initial_sp: u32, reset_vector: u32) -> ! {
 }
 
 /// Run the normal boot sequence.
-/// If no valid firmware is found, enters update mode.
-pub fn run_normal_boot(p: &mut crate::peripherals::Peripherals) -> ! {
+/// If no valid firmware is found, returns to let services handle it.
+pub fn run_normal_boot(p: &mut crate::peripherals::Peripherals) {
     use embedded_hal::delay::DelayNs;
 
     defmt::println!("Normal boot path");
@@ -330,10 +275,10 @@ pub fn run_normal_boot(p: &mut crate::peripherals::Peripherals) -> ! {
         bd.is_valid()
     );
 
-    // If BootData is valid but no firmware uploaded (both sizes 0), enter update mode
+    // If BootData is valid but no firmware uploaded (both sizes 0), return to main loop
     if bd.is_valid() && bd.size_a == 0 && bd.size_b == 0 {
-        defmt::println!("No firmware uploaded, entering update mode");
-        crate::update::enter_update_mode(p);
+        defmt::println!("No firmware uploaded, staying in bootloader");
+        return;
     }
 
     let (flash_addr, updated_bd) = select_boot_bank(&bd, &layout);
@@ -345,8 +290,8 @@ pub fn run_normal_boot(p: &mut crate::peripherals::Peripherals) -> ! {
 
     let bank_label = if flash_addr == layout.fw_a { "A" } else { "B" };
     if validate_bank(flash_addr).is_none() {
-        defmt::println!("No valid firmware in any bank, entering update mode");
-        crate::update::enter_update_mode(p);
+        defmt::println!("No valid firmware in any bank, staying in bootloader");
+        return;
     }
 
     defmt::println!(
