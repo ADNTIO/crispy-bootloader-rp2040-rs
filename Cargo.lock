@@ -266,7 +266,7 @@ checksum = "19d374276b40fb8bbdee95aef7c7fa6b5316ec764510eb64b8dd0e2ed0d7e7f5"
 
 [[package]]
 name = "crispy-bootloader"
-version = "0.2.0"
+version = "0.0.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -286,7 +286,7 @@ dependencies = [
 
 [[package]]
 name = "crispy-common-rs"
-version = "0.2.0"
+version = "0.0.0"
 dependencies = [
  "cortex-m",
  "defmt",
@@ -298,7 +298,7 @@ dependencies = [
 
 [[package]]
 name = "crispy-fw-sample-rs"
-version = "0.2.0"
+version = "0.0.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -314,7 +314,7 @@ dependencies = [
 
 [[package]]
 name = "crispy-upload-rs"
-version = "0.2.0"
+version = "0.0.0"
 dependencies = [
  "anyhow",
  "clap",

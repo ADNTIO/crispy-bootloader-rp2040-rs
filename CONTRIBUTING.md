@@ -24,7 +24,6 @@ For hardware-impacting changes, also run:
 
 ```bash
 make test-integration
-make test-deployment
 ```
 
 (or explain why it could not be run).

@@ -11,7 +11,8 @@ endif()
 
 include(pico_sdk_import.cmake)
 
-project(crispy-fw-sample-cpp VERSION 0.2.0 LANGUAGES C CXX ASM)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" CRISPY_PROJECT_VERSION)
+project(crispy-fw-sample-cpp VERSION ${CRISPY_PROJECT_VERSION} LANGUAGES C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)

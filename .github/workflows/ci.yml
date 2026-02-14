@@ -17,9 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sync Cargo versions from tag
+      - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
-        run: ./scripts/ci/sync-cargo-version-from-tag.sh
+        run: printf '%s' "${GITHUB_REF_NAME#v}" > VERSION
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -47,9 +47,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sync Cargo versions from tag
+      - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
-        run: ./scripts/ci/sync-cargo-version-from-tag.sh
+        run: printf '%s' "${GITHUB_REF_NAME#v}" > VERSION
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -64,9 +64,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sync Cargo versions from tag
+      - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
-        run: ./scripts/ci/sync-cargo-version-from-tag.sh
+        run: printf '%s' "${GITHUB_REF_NAME#v}" > VERSION
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -76,7 +76,7 @@ jobs:
       - name: Install tools
         run: |
           cargo install cargo-binutils flip-link
-          sudo apt-get update && sudo apt-get install -y libudev-dev
+          sudo apt-get update && sudo apt-get install -y libudev-dev gcc-arm-none-eabi cmake
 
       - name: Build all
         run: make all
@@ -91,28 +91,6 @@ jobs:
             target/${{ env.TARGET }}/release/crispy-bootloader.uf2
             target/${{ env.TARGET }}/release/crispy-fw-sample-rs
             target/${{ env.TARGET }}/release/crispy-fw-sample-rs.bin
-
-  build-firmware-cpp:
-    name: Build Firmware (C++)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Sync Cargo versions from tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: ./scripts/ci/sync-cargo-version-from-tag.sh
-
-      - name: Install ARM toolchain
-        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi cmake
-
-      - name: Build C++ firmware
-        run: make firmware-cpp
-
-      - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: firmware-cpp
-          path: |
             crispy-fw-sample-cpp/build/crispy-fw-sample-cpp.elf
             crispy-fw-sample-cpp/build/crispy-fw-sample-cpp.bin
 
@@ -122,9 +100,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sync Cargo versions from tag
+      - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
-        run: ./scripts/ci/sync-cargo-version-from-tag.sh
+        run: printf '%s' "${GITHUB_REF_NAME#v}" > VERSION
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -146,10 +124,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sync Cargo versions from tag
+      - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
-        run: ./scripts/ci/sync-cargo-version-from-tag.sh
+        run: printf '%s' "${GITHUB_REF_NAME#v}" > VERSION
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -164,7 +142,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [check, test, build-firmware, build-firmware-cpp, build-upload-linux, build-upload-windows]
+    needs: [check, test, build-firmware, build-upload-linux, build-upload-windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -172,8 +150,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sync Cargo versions from tag
-        run: ./scripts/ci/sync-cargo-version-from-tag.sh
+      - name: Set version from tag
+        run: printf '%s' "${GITHUB_REF_NAME#v}" > VERSION
 
       - name: Resolve release channel from tag
         id: release_channel
@@ -211,15 +189,15 @@ jobs:
           cp artifacts/firmware/crispy-fw-sample-rs release/crispy-fw-sample-rs.elf
           cp artifacts/firmware/crispy-fw-sample-rs.bin release/
           # Firmware sample (C++)
-          cp artifacts/firmware-cpp/crispy-fw-sample-cpp.elf release/
-          cp artifacts/firmware-cpp/crispy-fw-sample-cpp.bin release/
+          cp artifacts/firmware/crispy-fw-sample-cpp.elf release/
+          cp artifacts/firmware/crispy-fw-sample-cpp.bin release/
           # Upload tools
           cp artifacts/crispy-upload-linux-x64/crispy-upload release/crispy-upload-linux-x64
           cp artifacts/crispy-upload-windows-x64/crispy-upload.exe release/crispy-upload-windows-x64.exe
           chmod +x release/crispy-upload-linux-x64
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: release/*
           generate_release_notes: true

@@ -19,4 +19,5 @@ crispy-common-python = { path = "../../crispy-common-python" }
 markers = [
     "integration: tests requiring RP2040 hardware via SWD/USB",
     "deployment: end-to-end deployment workflow tests on hardware",
+    "version: VERSION file injection build verification tests",
 ]

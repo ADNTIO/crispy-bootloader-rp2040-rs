@@ -11,8 +11,6 @@ Validates the full lifecycle:
 Designed for CI with a physical RP2040 connected via SWD + USB.
 
 Usage:
-    make test-deployment
-    # or directly
     cd tests/integration && uv run pytest boot/deployment/ -v --tb=short
 
 Environment variables:
@@ -38,7 +36,7 @@ from hardware import (
 
 # USB identifiers
 PID_BOOTLOADER = "000a"  # VID=2E8A, also used by C++ firmware (Pico SDK default)
-PID_FW_RUST = "000b"     # VID=2E8A, Rust firmware uses a distinct PID
+PID_FW_RUST = "000b"  # VID=2E8A, Rust firmware uses a distinct PID
 
 # Artifact paths (relative to project root)
 TARGET_DIR = Path("target/thumbv6m-none-eabi/release")
@@ -94,7 +92,7 @@ class TestDeployment:
 
         # Write a 4KB sector of 0xFF (erased flash) to invalidate BootData
         boot_data_addr = 0x1019_0000
-        sector = b"\xFF" * 4096
+        sector = b"\xff" * 4096
         with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
             f.write(sector)
             blank_path = f.name
@@ -102,16 +100,23 @@ class TestDeployment:
         try:
             result = subprocess.run(
                 [
-                    "probe-rs", "download", "--chip", CHIP,
-                    "--binary-format", "bin",
-                    "--base-address", hex(boot_data_addr),
+                    "probe-rs",
+                    "download",
+                    "--chip",
+                    CHIP,
+                    "--binary-format",
+                    "bin",
+                    "--base-address",
+                    hex(boot_data_addr),
                     blank_path,
                 ],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
-            assert result.returncode == 0, (
-                f"probe-rs erase boot data failed:\n{result.stdout}\n{result.stderr}"
-            )
+            assert (
+                result.returncode == 0
+            ), f"probe-rs erase boot data failed:\n{result.stdout}\n{result.stderr}"
         finally:
             Path(blank_path).unlink(missing_ok=True)
 
@@ -124,13 +129,21 @@ class TestDeployment:
 
         # Build Rust artifacts (bootloader ELF + BIN + UF2, firmware RS BIN)
         result = subprocess.run(
-            ["make", "all"], cwd=root, capture_output=True, text=True, timeout=120,
+            ["make", "all"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         assert result.returncode == 0, f"make all failed:\n{result.stderr}"
 
         # Build C++ firmware
         result = subprocess.run(
-            ["make", "firmware-cpp"], cwd=root, capture_output=True, text=True, timeout=120,
+            ["make", "firmware-cpp"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         assert result.returncode == 0, f"make firmware-cpp failed:\n{result.stderr}"
 
@@ -152,8 +165,7 @@ class TestDeployment:
         uf2 = root / BOOTLOADER_UF2
 
         assert uf2.exists(), (
-            f"UF2 not found: {uf2}\n"
-            "Run 'make bootloader-uf2' first."
+            f"UF2 not found: {uf2}\n" "Run 'make bootloader-uf2' first."
         )
 
         # Flash via UF2 (force BOOTSEL → copy UF2 → device reboots)
@@ -178,7 +190,14 @@ class TestDeployment:
 
         fw_path = root / FW_RS_BIN
         ok, stdout, stderr = run_crispy_upload(
-            root, port, "upload", str(fw_path), "--bank", "0", "--version", "1",
+            root,
+            port,
+            "upload",
+            str(fw_path),
+            "--bank",
+            "0",
+            "--version",
+            "1",
         )
         assert ok, f"Upload Rust FW to bank A failed:\n{stdout}\n{stderr}"
         print(f"Rust firmware uploaded to bank A:\n{stdout}")
@@ -190,7 +209,14 @@ class TestDeployment:
 
         fw_path = root / FW_CPP_BIN
         ok, stdout, stderr = run_crispy_upload(
-            root, port, "upload", str(fw_path), "--bank", "1", "--version", "1",
+            root,
+            port,
+            "upload",
+            str(fw_path),
+            "--bank",
+            "1",
+            "--version",
+            "1",
         )
         assert ok, f"Upload C++ FW to bank B failed:\n{stdout}\n{stderr}"
         print(f"C++ firmware uploaded to bank B:\n{stdout}")
@@ -206,12 +232,12 @@ class TestDeployment:
         output = stdout + stderr
         low = output.lower()
         # Both banks should have version 1
-        assert "version a:   1" in low, (
-            f"Expected Version A = 1 in status output:\n{output}"
-        )
-        assert "version b:   1" in low, (
-            f"Expected Version B = 1 in status output:\n{output}"
-        )
+        assert (
+            "version a:   1" in low
+        ), f"Expected Version A = 1 in status output:\n{output}"
+        assert (
+            "version b:   1" in low
+        ), f"Expected Version B = 1 in status output:\n{output}"
         print(f"Status after upload:\n{output}")
 
     def test_07_set_bank_a_and_reboot(self):
@@ -245,9 +271,9 @@ class TestDeployment:
             ser.write(b"status\r\n")
             time.sleep(1.0)
             response = ser.read(ser.in_waiting or 256).decode(errors="replace")
-            assert "Bank: 0" in response, (
-                f"Expected 'Bank: 0' in firmware response, got:\n{response}"
-            )
+            assert (
+                "Bank: 0" in response
+            ), f"Expected 'Bank: 0' in firmware response, got:\n{response}"
             print(f"Rust firmware status:\n{response}")
 
     def test_08_fw_rs_reboot_to_bootloader(self):
@@ -271,9 +297,9 @@ class TestDeployment:
         assert ok, f"Status command failed:\n{stdout}\n{stderr}"
 
         output = stdout + stderr
-        assert "updatemode" in output.lower().replace(" ", "").replace("_", ""), (
-            f"Expected UpdateMode in status output:\n{output}"
-        )
+        assert "updatemode" in output.lower().replace(" ", "").replace(
+            "_", ""
+        ), f"Expected UpdateMode in status output:\n{output}"
         print(f"Bootloader status:\n{output}")
 
     def test_09_switch_to_bank_b(self):
@@ -289,9 +315,9 @@ class TestDeployment:
         assert ok, f"Status command failed:\n{stdout}\n{stderr}"
 
         output = stdout + stderr
-        assert "active bank: 1" in output.lower(), (
-            f"Expected bank B (1) active in status output:\n{output}"
-        )
+        assert (
+            "active bank: 1" in output.lower()
+        ), f"Expected bank B (1) active in status output:\n{output}"
         print(f"Status after bank switch:\n{output}")
 
     def test_10_reboot_to_fw_cpp(self):
@@ -323,9 +349,9 @@ class TestDeployment:
             full_output = banner + response
 
             # Verify it's the C++ firmware on bank 1
-            assert "Bank: 1" in response, (
-                f"Expected 'Bank: 1' in firmware response, got:\n{full_output}"
-            )
+            assert (
+                "Bank: 1" in response
+            ), f"Expected 'Bank: 1' in firmware response, got:\n{full_output}"
             print(f"C++ firmware output:\n{full_output}")
 
     def test_11_fw_cpp_reboot_to_bootloader(self):
@@ -348,9 +374,9 @@ class TestDeployment:
         assert ok, f"Status command failed:\n{stdout}\n{stderr}"
 
         output = stdout + stderr
-        assert "updatemode" in output.lower().replace(" ", "").replace("_", ""), (
-            f"Expected UpdateMode in status output:\n{output}"
-        )
+        assert "updatemode" in output.lower().replace(" ", "").replace(
+            "_", ""
+        ), f"Expected UpdateMode in status output:\n{output}"
 
     def test_12_wipe_and_verify_update_mode(self):
         """Wipe all firmware, reboot, and verify device stays in update mode."""
@@ -376,7 +402,7 @@ class TestDeployment:
         assert ok, f"Status command failed:\n{stdout}\n{stderr}"
 
         output = stdout + stderr
-        assert "updatemode" in output.lower().replace(" ", "").replace("_", ""), (
-            f"Expected UpdateMode after wipe, got:\n{output}"
-        )
+        assert "updatemode" in output.lower().replace(" ", "").replace(
+            "_", ""
+        ), f"Expected UpdateMode after wipe, got:\n{output}"
         print(f"Final status (post-wipe):\n{output}")

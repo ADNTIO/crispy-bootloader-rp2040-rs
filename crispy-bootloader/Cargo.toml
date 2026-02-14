@@ -1,6 +1,6 @@
 [package]
 name = "crispy-bootloader"
-version = "0.2.0"
+version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -15,7 +15,7 @@ name = "crispy-bootloader"
 path = "src/main.rs"
 
 [dependencies]
-crispy-common = { package = "crispy-common-rs", version = "0.2.0", path = "../crispy-common-rs", features = ["embedded", "defmt"] }
+crispy-common = { package = "crispy-common-rs", version = "0.0.0", path = "../crispy-common-rs", features = ["embedded", "defmt"] }
 rp2040-boot2 = "0.3"
 rp2040-hal = { version = "0.11", features = ["rt", "critical-section-impl"] }
 embedded-hal = "1.0.0"

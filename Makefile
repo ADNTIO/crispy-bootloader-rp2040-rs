@@ -4,7 +4,12 @@ EMBEDDED_TARGET := thumbv6m-none-eabi
 CHIP := RP2040
 RELEASE_DIR := target/$(EMBEDDED_TARGET)/release
 
-.PHONY: help all embedded host bootloader firmware firmware-cpp upload clean lint clippy lint-python lint-md test-unit test-integration test-deployment
+# Override project version: make all VERSION=0.3.2
+ifdef VERSION
+$(shell printf '$(VERSION)' > VERSION)
+endif
+
+.PHONY: help all embedded host bootloader firmware firmware-cpp upload clean lint clippy lint-python lint-md test-unit test-version test-integration test-deployment
 .PHONY: bootloader-bin firmware-bin firmware-cpp-bin bootloader-uf2
 .PHONY: flash-bootloader run-bootloader
 .PHONY: install-probe-rs install-tools update-mode reset
@@ -14,7 +19,8 @@ help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Build targets:"
-	@echo "  all              Build everything (ELF + BIN + UF2)"
+	@echo "  all              Build everything (ELF + BIN + UF2 + C++)"
+	@echo "                   Override version: make all VERSION=0.3.2"
 	@echo "  embedded         Build bootloader + firmware (RP2040)"
 	@echo "  host             Build upload tool (host)"
 	@echo "  bootloader       Build bootloader only"
@@ -34,8 +40,9 @@ help:
 	@echo "  clippy           Run Rust clippy lints"
 	@echo "  lint-md          Run Markdown linter (markdownlint-cli2)"
 	@echo "  test-unit        Run all unit tests (Rust + Python)"
-	@echo "  test-integration Run hardware integration tests (needs SWD + board)"
-	@echo "  test-deployment  Run end-to-end deployment test (needs SWD + board)"
+	@echo "  test-integration Run all integration tests (needs SWD + board)"
+	@echo "  test-version     Run version injection tests only (no hardware)"
+	@echo "  test-deployment  Run deployment tests only (needs SWD + board)"
 	@echo ""
 	@echo "Setup:"
 	@echo "  install-tools    Install cargo-binutils (rust-objcopy)"
@@ -46,8 +53,8 @@ help:
 	@echo "  reset            Reset the device via SWD"
 	@echo "  clean            Clean build artifacts"
 
-# Build everything (ELF + BIN + UF2)
-all: bootloader-uf2 firmware-bin
+# Build everything (ELF + BIN + UF2 + C++)
+all: bootloader-uf2 firmware-bin firmware-cpp
 
 # Build embedded packages (bootloader + firmware)
 embedded:
@@ -111,12 +118,15 @@ test-unit:
 	cargo test -p crispy-common-rs
 	cd crispy-common-python && uv run pytest -v
 
-# Integration tests (requires SWD probe + RP2040 board)
-test-integration: all
-	cd tests/integration && uv run pytest boot/bootsequence/ -v
+# All integration tests (version + bootsequence + deployment)
+test-integration:
+	cd tests/integration && uv run pytest -v --tb=short
 
-# End-to-end deployment test (erase -> flash -> upload -> boot -> bank switch -> wipe)
-# Build is handled by test_02_build_artifacts; use CRISPY_SKIP_BUILD=1 to skip.
+# Version injection test only (no hardware needed)
+test-version:
+	cd tests/integration && uv run pytest boot/version/ -v
+
+# End-to-end deployment test only
 test-deployment:
 	cd tests/integration && uv run pytest boot/deployment/ -v --tb=short
 

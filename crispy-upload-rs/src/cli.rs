@@ -15,7 +15,7 @@ use crate::transport::Transport;
 #[derive(Parser)]
 #[command(name = "crispy-upload")]
 #[command(about = "Firmware upload tool for crispy-bootloader")]
-#[command(version)]
+#[command(version = env!("CRISPY_VERSION"))]
 #[command(disable_version_flag = true)]
 pub struct Cli {
     /// Print version
