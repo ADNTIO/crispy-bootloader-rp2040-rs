@@ -1,0 +1,15 @@
+[project]
+name = "crispy-upload-python"
+version = "0.2.0"
+description = "Firmware upload CLI for the Crispy RP2040 bootloader"
+requires-python = ">=3.12"
+dependencies = [
+    "crispy-common-python",
+    "pyserial>=3.5",
+]
+
+[tool.uv.sources]
+crispy-common-python = { path = "../crispy-common-python" }
+
+[project.scripts]
+crispy-upload = "crispy_upload:main"

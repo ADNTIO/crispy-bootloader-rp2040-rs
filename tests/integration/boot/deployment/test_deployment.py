@@ -13,8 +13,7 @@ Designed for CI with a physical RP2040 connected via SWD + USB.
 Usage:
     make test-deployment
     # or directly
-    cd scripts/python && . .venv/bin/activate
-    python -m pytest tests/test_deployment.py -v --tb=short
+    cd tests/integration && uv run pytest boot/deployment/ -v --tb=short
 
 Environment variables:
     CRISPY_SKIP_BUILD  Set to "1" to skip the build step
@@ -28,7 +27,7 @@ from pathlib import Path
 import pytest
 import serial
 
-from tests.conftest import (
+from hardware import (
     CHIP,
     enter_update_mode_via_swd,
     find_firmware_port,
@@ -69,7 +68,7 @@ class TestDeployment:
 
     @staticmethod
     def _project_root() -> Path:
-        return Path(__file__).parent.parent.parent.parent
+        return Path(__file__).parent.parent.parent.parent.parent
 
     @classmethod
     def _find_bootloader_port(cls, timeout: float = 15.0) -> str:

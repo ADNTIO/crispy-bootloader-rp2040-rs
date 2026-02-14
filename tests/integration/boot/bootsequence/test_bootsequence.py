@@ -5,7 +5,7 @@
 BDD-style integration tests for crispy-bootloader.
 
 These tests require a physical RP2040 device connected via USB.
-Run with: pytest tests/test_integration.py -v --device /dev/ttyACM0
+Run with: cd tests/integration && uv run pytest boot/bootsequence/ -v --device /dev/ttyACM0
 
 Features tested:
 - Bootloader status query

@@ -3,7 +3,6 @@
 
 """Tests for CRC-32 calculation."""
 
-import pytest
 import zlib
 from crispy_protocol.crc32 import crc32, _CRC32_TABLE
 

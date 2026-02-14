@@ -12,7 +12,7 @@ env:
 
 jobs:
   check:
-    name: Format + Clippy + Markdown
+    name: Format + Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,21 +26,20 @@ jobs:
           targets: thumbv6m-none-eabi
           components: rustfmt, clippy
 
+      - uses: astral-sh/setup-uv@v3
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install libudev
+      - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Clippy
-        run: make clippy
-
-      - name: Markdown lint
-        run: make lint-md
+      - name: Lint (Rust + Python + Markdown)
+        run: make lint
 
   test:
     name: Unit Tests
@@ -54,8 +53,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - uses: astral-sh/setup-uv@v3
+
       - name: Run tests
-        run: make test
+        run: make test-unit
 
   build-firmware:
     name: Build Firmware
