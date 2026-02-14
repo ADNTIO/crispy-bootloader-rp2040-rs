@@ -1,6 +1,7 @@
 # Crispy RP2040 Bootloader - Build shortcuts
 
 EMBEDDED_TARGET := thumbv6m-none-eabi
+WINDOWS_TARGET  := x86_64-pc-windows-gnu
 CHIP := RP2040
 RELEASE_DIR := target/$(EMBEDDED_TARGET)/release
 
@@ -9,7 +10,7 @@ ifdef VERSION
 $(shell printf '$(VERSION)' > VERSION)
 endif
 
-.PHONY: help all embedded host bootloader firmware firmware-cpp upload clean lint clippy lint-python lint-md test-unit test-version test-integration test-deployment
+.PHONY: help all embedded host bootloader firmware firmware-cpp upload upload-windows clean lint clippy lint-python lint-md test-unit test-version test-integration test-deployment test-ci-scripts
 .PHONY: bootloader-bin firmware-bin firmware-cpp-bin bootloader-uf2
 .PHONY: flash-bootloader run-bootloader
 .PHONY: install-probe-rs install-tools update-mode reset
@@ -25,7 +26,8 @@ help:
 	@echo "  host             Build upload tool (host)"
 	@echo "  bootloader       Build bootloader only"
 	@echo "  firmware         Build firmware only"
-	@echo "  upload           Build upload tool only"
+	@echo "  upload           Build upload tool (Linux)"
+	@echo "  upload-windows   Build upload tool (Windows, cross-compile)"
 	@echo "  bootloader-bin   Build crispy-bootloader.bin"
 	@echo "  firmware-bin     Build crispy-fw-sample-rs.bin"
 	@echo "  firmware-cpp     Build C++ firmware sample (CMake + Pico SDK)"
@@ -43,6 +45,7 @@ help:
 	@echo "  test-integration Run all integration tests (needs SWD + board)"
 	@echo "  test-version     Run version injection tests only (no hardware)"
 	@echo "  test-deployment  Run deployment tests only (needs SWD + board)"
+	@echo "  test-ci-scripts  Run CI script tests (no hardware)"
 	@echo ""
 	@echo "Setup:"
 	@echo "  install-tools    Install cargo-binutils (rust-objcopy)"
@@ -53,8 +56,8 @@ help:
 	@echo "  reset            Reset the device via SWD"
 	@echo "  clean            Clean build artifacts"
 
-# Build everything (ELF + BIN + UF2 + C++)
-all: bootloader-uf2 firmware-bin firmware-cpp
+# Build everything (ELF + BIN + UF2 + C++ + upload tools Linux/Windows)
+all: bootloader-uf2 firmware-bin firmware-cpp upload upload-windows
 
 # Build embedded packages (bootloader + firmware)
 embedded:
@@ -73,6 +76,9 @@ firmware:
 
 upload:
 	cargo build --release -p crispy-upload-rs
+
+upload-windows:
+	cargo build --release -p crispy-upload-rs --target $(WINDOWS_TARGET)
 
 # Binary conversion targets
 bootloader-bin: bootloader
@@ -130,14 +136,19 @@ test-version:
 test-deployment:
 	cd tests/integration && uv run pytest boot/deployment/ -v --tb=short
 
+# CI script tests
+test-ci-scripts:
+	./scripts/ci/test-prepare-release-assets.sh
+
 # Clean
 clean:
 	cargo clean
 	rm -rf $(CPP_FW_BUILD)
 
-# Install cargo-binutils (provides rust-objcopy)
+# Install cargo-binutils + Windows cross-compilation target
 install-tools:
 	rustup component add llvm-tools-preview
+	rustup target add x86_64-pc-windows-gnu
 	cargo install cargo-binutils
 
 # Install custom probe-rs with software breakpoint support (required for RAM debugging)
