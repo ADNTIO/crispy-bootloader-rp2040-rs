@@ -116,7 +116,8 @@ test-integration: all
 	cd tests/integration && uv run pytest boot/bootsequence/ -v
 
 # End-to-end deployment test (erase -> flash -> upload -> boot -> bank switch -> wipe)
-test-deployment: all firmware-cpp
+# Build is handled by test_02_build_artifacts; use CRISPY_SKIP_BUILD=1 to skip.
+test-deployment:
 	cd tests/integration && uv run pytest boot/deployment/ -v --tb=short
 
 # Clean
