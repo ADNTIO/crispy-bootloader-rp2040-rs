@@ -222,7 +222,7 @@ class TestDeployment:
         print(f"C++ firmware uploaded to bank B:\n{stdout}")
 
     def test_06_verify_status_after_upload(self):
-        """Verify both banks are populated with correct versions."""
+        """Verify bootloader version and both banks are populated."""
         root = self._project_root()
         port = self._find_bootloader_port()
 
@@ -231,6 +231,14 @@ class TestDeployment:
 
         output = stdout + stderr
         low = output.lower()
+
+        # Bootloader version must match the VERSION file
+        expected_version = (root / "VERSION").read_text().strip()
+        expected_line = f"bootloader:  {expected_version}"
+        assert (
+            expected_line in low
+        ), f"Expected '{expected_line}' in status output:\n{output}"
+
         # Both banks should have version 1
         assert (
             "version a:   1" in low
@@ -321,7 +329,7 @@ class TestDeployment:
         print(f"Status after bank switch:\n{output}")
 
     def test_10_reboot_to_fw_cpp(self):
-        """Reboot into C++ firmware on bank B and verify via serial."""
+        """Reboot into C++ firmware on bank B and verify version + bank."""
         root = self._project_root()
         port = self._find_bootloader_port()
 
@@ -333,26 +341,42 @@ class TestDeployment:
         fw_port = find_firmware_port(pid=PID_BOOTLOADER, timeout=15.0)
         TestDeployment.fw_cpp_port = fw_port
 
-        # The banner may have already been sent before we opened the port.
-        # Send a newline + status command to identify the C++ firmware.
+        # Query firmware version and boot status via serial commands.
         time.sleep(1.0)
         with serial.Serial(fw_port, baudrate=115200, timeout=3) as ser:
-            # Flush any pending data (may contain the banner)
+            # Flush any pending data (welcome banner lost before CDC connect)
+            ser.reset_input_buffer()
+            ser.write(b"\r\n")
             time.sleep(0.5)
-            pending = ser.read(ser.in_waiting or 1)
-            banner = pending.decode(errors="replace")
+            ser.reset_input_buffer()
 
-            # Send status command
+            # Query firmware version
+            ser.write(b"version\r\n")
+            time.sleep(1.0)
+            version_response = ser.read(ser.in_waiting or 256).decode(
+                errors="replace"
+            )
+            expected_version = (root / "VERSION").read_text().strip()
+            assert (
+                f"Version: {expected_version}" in version_response
+            ), (
+                f"Expected 'Version: {expected_version}' in C++ firmware "
+                f"version output:\n{version_response}"
+            )
+
+            # Query boot status
             ser.write(b"status\r\n")
             time.sleep(1.0)
-            response = ser.read(ser.in_waiting or 256).decode(errors="replace")
-            full_output = banner + response
+            status_response = ser.read(ser.in_waiting or 256).decode(
+                errors="replace"
+            )
 
             # Verify it's the C++ firmware on bank 1
             assert (
-                "Bank: 1" in response
-            ), f"Expected 'Bank: 1' in firmware response, got:\n{full_output}"
-            print(f"C++ firmware output:\n{full_output}")
+                "Bank: 1" in status_response
+            ), f"Expected 'Bank: 1' in firmware response, got:\n{status_response}"
+            print(f"C++ firmware version: {version_response.strip()}")
+            print(f"C++ firmware status:\n{status_response}")
 
     def test_11_fw_cpp_reboot_to_bootloader(self):
         """Send bootload command to C++ firmware and return to bootloader."""

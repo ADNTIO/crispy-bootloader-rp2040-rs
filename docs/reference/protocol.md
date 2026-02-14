@@ -48,3 +48,11 @@ Older bootloader builds may omit this field; host tools should handle its absenc
 - `Idle`
 - `UpdateMode`
 - `Receiving`
+
+## Version Management
+
+- `StartUpdate.version` is provided by the host for the target bank.
+- The version is persisted to `BootData.version_a` or `BootData.version_b` only after a successful `FinishUpdate` (RAM CRC check + flash CRC check).
+- `SetActiveBank` switches the active bank but does not rewrite bank version metadata.
+- `WipeAll` resets boot metadata (`BootData::default_new()`), including bank versions.
+- `Status.bootloader_version` is optional and encoded as packed semver (`u32`) for backward compatibility with older bootloader builds.
