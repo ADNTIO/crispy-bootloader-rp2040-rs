@@ -154,7 +154,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build
-        run: cargo build --release -p crispy-upload
+        run: cargo build --release -p crispy-upload-rs
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

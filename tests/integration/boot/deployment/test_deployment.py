@@ -168,7 +168,7 @@ class TestDeployment:
         print(f"Bootloader detected on {port}")
 
     def test_04_upload_fw_rs_bank_a(self):
-        """Upload Rust firmware to bank A via crispy-upload."""
+        """Upload Rust firmware to bank A via crispy-upload-rs."""
         root = self._project_root()
 
         # Enter update mode via SWD (ensures bootloader is in update mode)
@@ -184,7 +184,7 @@ class TestDeployment:
         print(f"Rust firmware uploaded to bank A:\n{stdout}")
 
     def test_05_upload_fw_cpp_bank_b(self):
-        """Upload C++ firmware to bank B via crispy-upload."""
+        """Upload C++ firmware to bank B via crispy-upload-rs."""
         root = self._project_root()
         port = self._find_bootloader_port()
 

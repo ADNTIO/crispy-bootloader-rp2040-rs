@@ -10,7 +10,7 @@ Transport protocol between host tools and bootloader.
 
 ## Commands
 
-Defined in `crispy-common/src/protocol.rs`.
+Defined in `crispy-common-rs/src/protocol.rs`.
 
 - `GetStatus`
 - `StartUpdate { bank, size, crc32, version }`

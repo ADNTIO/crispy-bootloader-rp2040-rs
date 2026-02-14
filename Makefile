@@ -55,7 +55,7 @@ embedded:
 
 # Build host upload tool
 host:
-	cargo build --release -p crispy-upload
+	cargo build --release -p crispy-upload-rs
 
 # Individual targets
 bootloader:
@@ -65,7 +65,7 @@ firmware:
 	cargo build --release -p crispy-fw-sample-rs --target $(EMBEDDED_TARGET)
 
 upload:
-	cargo build --release -p crispy-upload
+	cargo build --release -p crispy-upload-rs
 
 # Binary conversion targets
 bootloader-bin: bootloader
@@ -84,7 +84,7 @@ firmware-cpp:
 
 # UF2 targets
 bootloader-uf2: bootloader-bin host
-	cargo run --release -p crispy-upload -- bin2uf2 $(RELEASE_DIR)/crispy-bootloader.bin $(RELEASE_DIR)/crispy-bootloader.uf2 --base-address 0x10000000
+	cargo run --release -p crispy-upload-rs -- bin2uf2 $(RELEASE_DIR)/crispy-bootloader.bin $(RELEASE_DIR)/crispy-bootloader.uf2 --base-address 0x10000000
 
 # Flash/run bootloader via SWD
 flash-bootloader:
@@ -97,7 +97,7 @@ run-bootloader:
 lint: clippy lint-python lint-md
 
 clippy:
-	cargo clippy -p crispy-upload -- -D warnings
+	cargo clippy -p crispy-upload-rs -- -D warnings
 	cargo clippy -p crispy-bootloader -p crispy-fw-sample-rs --target $(EMBEDDED_TARGET) -- -D warnings
 
 lint-python:
@@ -108,7 +108,7 @@ lint-md:
 
 # Unit tests (Rust + Python, no hardware needed)
 test-unit:
-	cargo test -p crispy-common
+	cargo test -p crispy-common-rs
 	cd crispy-common-python && uv run pytest -v
 
 # Integration tests (requires SWD probe + RP2040 board)

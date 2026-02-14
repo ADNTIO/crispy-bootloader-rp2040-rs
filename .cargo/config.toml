@@ -1,10 +1,10 @@
 # NOTE: No default target set because workspace has mixed targets:
 # - crispy-bootloader, crispy-fw-sample-rs: thumbv6m-none-eabi (embedded)
-# - crispy-upload: host target (std)
+# - crispy-upload-rs: host target (std)
 #
 # Build commands:
 #   Embedded: make embedded (or cargo build --release -p crispy-bootloader --target thumbv6m-none-eabi)
-#   Host:     make host (or cargo build --release -p crispy-upload)
+#   Host:     make host (or cargo build --release -p crispy-upload-rs)
 #
 # Flash/Run:
 #   make flash-bootloader

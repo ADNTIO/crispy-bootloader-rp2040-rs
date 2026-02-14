@@ -271,7 +271,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "crc",
- "crispy-common",
+ "crispy-common-rs",
  "defmt",
  "defmt-rtt",
  "embedded-hal 1.0.0",
@@ -285,7 +285,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "crispy-common"
+name = "crispy-common-rs"
 version = "0.2.0"
 dependencies = [
  "cortex-m",
@@ -302,7 +302,7 @@ version = "0.2.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
- "crispy-common",
+ "crispy-common-rs",
  "defmt",
  "defmt-rtt",
  "embedded-hal 1.0.0",
@@ -313,13 +313,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "crispy-upload"
+name = "crispy-upload-rs"
 version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
  "crc",
- "crispy-common",
+ "crispy-common-rs",
  "indicatif",
  "postcard",
  "serialport",

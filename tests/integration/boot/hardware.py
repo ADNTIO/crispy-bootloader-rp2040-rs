@@ -12,7 +12,7 @@ import subprocess
 import time
 from pathlib import Path
 
-# Constants matching crispy-common/src/protocol.rs
+# Constants matching crispy-common-rs/src/protocol.rs
 RAM_UPDATE_FLAG_ADDR = 0x2003_BFF0
 RAM_UPDATE_MAGIC = 0x0FDA_7E00
 CHIP = "rp2040"
@@ -294,13 +294,13 @@ def wait_for_serial_banner(
 def run_crispy_upload(
     project_root: "Path", port: str, *args: str
 ) -> "tuple[bool, str, str]":
-    """Execute ``cargo run -p crispy-upload -- <args>`` and return results.
+    """Execute ``cargo run -p crispy-upload-rs -- <args>`` and return results.
 
     Returns:
         (success, stdout, stderr)
     """
     cmd = [
-        "cargo", "run", "--release", "-p", "crispy-upload", "--",
+        "cargo", "run", "--release", "-p", "crispy-upload-rs", "--",
         "--port", port,
         *args,
     ]
