@@ -16,20 +16,14 @@ from crispy_board import (
 
 @pytest.fixture(scope="session")
 def flashed_device(project_root, skip_flash):
-    """Ensure device has bootloader flashed (firmware uploaded via USB during tests)."""
     if skip_flash:
-        print("Skipping flash (--skip-flash)")
         return True
 
     target_dir = project_root / "target" / "thumbv6m-none-eabi" / "release"
     bootloader_elf = target_dir / "crispy-bootloader"
 
     if not bootloader_elf.exists():
-        print("Bootloader not found, building...")
-        result = build_packages(
-            project_root,
-            ["crispy-bootloader", "crispy-fw-sample-rs"],
-        )
+        result = build_packages(project_root, ["crispy-bootloader", "crispy-fw-sample-rs"])
         if result.returncode != 0:
             pytest.fail(f"Failed to build: {result.stderr}")
 
@@ -41,7 +35,6 @@ def flashed_device(project_root, skip_flash):
 
     reset_device()
     time.sleep(2.0)
-
     return True
 
 
@@ -54,7 +47,6 @@ def device_in_update_mode(flashed_device):
 
 @pytest.fixture
 def transport(device_in_update_mode):
-    """Function-scoped transport: resets bootloader via SWD before each test."""
     from crispy_protocol.transport import Transport
 
     enter_update_mode_via_swd()
@@ -65,7 +57,6 @@ def transport(device_in_update_mode):
         pytest.fail("Bootloader serial port not found after reset")
 
     time.sleep(0.5)
-
     transport = Transport(port, timeout=5.0)
     yield transport
     transport.close()
