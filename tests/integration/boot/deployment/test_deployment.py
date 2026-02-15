@@ -127,25 +127,17 @@ class TestDeployment:
 
         root = self._project_root()
 
-        # Build Rust artifacts (bootloader ELF + BIN + UF2, firmware RS BIN)
+        # Build only what deployment tests need (no Windows cross-compile).
+        # From-scratch builds can take several minutes (Pico SDK fetch + Rust
+        # compilation), so use a generous timeout.
         result = subprocess.run(
-            ["make", "all"],
+            ["make", "bootloader-uf2", "firmware-bin", "firmware-cpp", "upload"],
             cwd=root,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=600,
         )
-        assert result.returncode == 0, f"make all failed:\n{result.stderr}"
-
-        # Build C++ firmware
-        result = subprocess.run(
-            ["make", "firmware-cpp"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        assert result.returncode == 0, f"make firmware-cpp failed:\n{result.stderr}"
+        assert result.returncode == 0, f"make failed:\n{result.stderr}"
 
         # Verify artifacts exist
         for path in (BOOTLOADER_ELF, FW_RS_BIN, FW_CPP_BIN):
