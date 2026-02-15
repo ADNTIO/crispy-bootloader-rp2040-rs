@@ -4,7 +4,7 @@ Boot metadata is stored in flash at `BOOT_DATA_ADDR` (`0x10190000`).
 
 ## Structure
 
-Defined in `crispy-common/src/protocol.rs` as `repr(C)` 32-byte struct:
+Defined in `crispy-common-rs/src/protocol.rs` as `repr(C)` 32-byte struct:
 
 ```rust
 pub struct BootData {

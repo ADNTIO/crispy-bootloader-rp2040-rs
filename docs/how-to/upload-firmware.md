@@ -21,7 +21,7 @@ Artifact:
 ## 1. Check bootloader status
 
 ```bash
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 status
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 status
 ```
 
 The status output includes bootloader version (when available), active bank, and bank firmware versions.
@@ -31,7 +31,7 @@ The status output includes bootloader version (when available), active bank, and
 Bank A (`0`):
 
 ```bash
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 upload \
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 upload \
   target/thumbv6m-none-eabi/release/crispy-fw-sample-rs.bin \
   --bank 0 --fw-version 1
 ```
@@ -39,7 +39,7 @@ cargo run --release -p crispy-upload -- --port /dev/ttyACM0 upload \
 Bank B (`1`):
 
 ```bash
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 upload \
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 upload \
   target/thumbv6m-none-eabi/release/crispy-fw-sample-rs.bin \
   --bank 1 --fw-version 1
 ```
@@ -49,8 +49,8 @@ cargo run --release -p crispy-upload -- --port /dev/ttyACM0 upload \
 ## 3. Reboot into selected bank
 
 ```bash
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 set-bank 0
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 reboot
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 set-bank 0
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 reboot
 ```
 
 ## 4. Optional cleanup
@@ -58,7 +58,7 @@ cargo run --release -p crispy-upload -- --port /dev/ttyACM0 reboot
 Wipe both banks and boot metadata:
 
 ```bash
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 wipe
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 wipe
 ```
 
 ## See also

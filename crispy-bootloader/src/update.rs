@@ -9,12 +9,18 @@
 //! - DataBlock: Send firmware data chunks (accumulated in RAM)
 //! - FinishUpdate: Persist to flash, verify CRC and commit the update
 //! - Reboot: Restart the device
+//!
+//! Version handling:
+//! - `StartUpdate.version` is metadata provided by the host.
+//! - This version is written to `BootData.version_a/version_b` only after a successful
+//!   `FinishUpdate` (RAM CRC + flash CRC checks).
+//! - `SetActiveBank` changes active selection only; it does not rewrite bank versions.
 
 use crate::flash;
 use crate::usb_transport::UsbTransport;
 use crispy_common::protocol::*;
 
-const BOOTLOADER_VERSION: &str = env!("CARGO_PKG_VERSION");
+const BOOTLOADER_VERSION: &str = env!("CRISPY_VERSION");
 
 /// Maximum firmware size that can be buffered in RAM
 /// We use the firmware RAM region (0x20000000 - 0x20030000, 192KB) which is
@@ -54,6 +60,8 @@ pub enum UpdateState {
 }
 
 /// Dispatch a command to its handler.
+///
+/// Note: version metadata is only committed on successful `FinishUpdate`.
 pub fn dispatch_command(
     transport: &mut UsbTransport,
     state: UpdateState,

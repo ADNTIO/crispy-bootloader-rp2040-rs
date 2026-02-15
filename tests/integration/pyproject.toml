@@ -4,6 +4,7 @@ version = "0.2.0"
 description = "Integration and deployment tests for Crispy RP2040 bootloader"
 requires-python = ">=3.12"
 dependencies = [
+    "crispy-common-python",
     "pytest>=8.0",
     "pyserial>=3.5",
     "pytest-cov>=4.0",
@@ -11,11 +12,12 @@ dependencies = [
     "pytest-metadata>=3.0",
 ]
 
-[tool.uv]
-dev-dependencies = []
+[tool.uv.sources]
+crispy-common-python = { path = "../../crispy-common-python" }
 
 [tool.pytest.ini_options]
 markers = [
     "integration: tests requiring RP2040 hardware via SWD/USB",
     "deployment: end-to-end deployment workflow tests on hardware",
+    "version: VERSION file injection build verification tests",
 ]

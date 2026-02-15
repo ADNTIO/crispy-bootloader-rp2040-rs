@@ -16,7 +16,7 @@
 
 ## Important constants
 
-Defined in `crispy-common/src/protocol.rs`:
+Defined in `crispy-common-rs/src/protocol.rs`:
 
 - `FLASH_BASE = 0x10000000`
 - `FW_A_ADDR = 0x10010000`

@@ -62,4 +62,4 @@ Architecture-impacting decisions are tracked as ADRs:
 
 - Bank selection: `crispy-bootloader/src/boot.rs`
 - Update state machine and services: `crispy-bootloader/src/main.rs`
-- Shared protocol and layout constants: `crispy-common/src/protocol.rs`
+- Shared protocol and layout constants: `crispy-common-rs/src/protocol.rs`

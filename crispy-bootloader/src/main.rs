@@ -24,7 +24,7 @@ defmt::timestamp!("{=u64:us}", { 0 });
 
 use cortex_m_rt::entry;
 
-const BOOTLOADER_VERSION: &str = env!("CARGO_PKG_VERSION");
+const BOOTLOADER_VERSION: &str = env!("CRISPY_VERSION");
 
 #[unsafe(link_section = ".boot2")]
 #[used]

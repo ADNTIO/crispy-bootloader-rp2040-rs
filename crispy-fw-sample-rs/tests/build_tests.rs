@@ -13,8 +13,8 @@ fn test_firmware_builds() {
 #[test]
 fn test_workspace_structure() {
     assert!(
-        std::path::Path::new("../crispy-common").exists(),
-        "crispy-common crate should exist"
+        std::path::Path::new("../crispy-common-rs").exists(),
+        "crispy-common-rs crate should exist"
     );
     assert!(
         std::path::Path::new("Cargo.toml").exists(),

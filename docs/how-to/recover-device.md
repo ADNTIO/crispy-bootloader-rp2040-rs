@@ -21,23 +21,23 @@ make update-mode
 ## 2. Inspect bootloader state
 
 ```bash
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 status
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 status
 ```
 
 ## 3. Reset boot metadata and banks
 
 ```bash
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 wipe
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 wipe
 ```
 
 Then upload a known-good firmware:
 
 ```bash
 make firmware-bin
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 upload \
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 upload \
   target/thumbv6m-none-eabi/release/crispy-fw-sample-rs.bin --bank 0 --fw-version 1
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 set-bank 0
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 reboot
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 set-bank 0
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 reboot
 ```
 
 ## 4. Last resort: reflash bootloader

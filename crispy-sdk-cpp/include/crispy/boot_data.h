@@ -7,7 +7,7 @@
 
 namespace crispy {
 
-// BootData structure (must match crispy-common, 32 bytes)
+// BootData structure (must match crispy-common-rs, 32 bytes)
 struct __attribute__((packed)) BootData {
     uint32_t magic;
     uint8_t  active_bank;

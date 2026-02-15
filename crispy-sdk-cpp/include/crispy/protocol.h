@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Crispy Bootloader Protocol - must match crispy-common (Rust)
+// Crispy Bootloader Protocol - must match crispy-common-rs (Rust)
 
 #pragma once
 

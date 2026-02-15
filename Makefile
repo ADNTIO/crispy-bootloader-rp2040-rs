@@ -1,10 +1,16 @@
 # Crispy RP2040 Bootloader - Build shortcuts
 
 EMBEDDED_TARGET := thumbv6m-none-eabi
+WINDOWS_TARGET  := x86_64-pc-windows-gnu
 CHIP := RP2040
 RELEASE_DIR := target/$(EMBEDDED_TARGET)/release
 
-.PHONY: help all embedded host bootloader firmware firmware-cpp upload clean clippy lint-md test test-integration test-deployment
+# Override project version: make all VERSION=0.3.2
+ifdef VERSION
+$(shell printf '$(VERSION)' > VERSION)
+endif
+
+.PHONY: help all embedded host bootloader firmware firmware-cpp upload upload-windows clean lint clippy lint-python lint-md test-unit test-version test-integration test-deployment test-ci-scripts
 .PHONY: bootloader-bin firmware-bin firmware-cpp-bin bootloader-uf2
 .PHONY: flash-bootloader run-bootloader
 .PHONY: install-probe-rs install-tools update-mode reset
@@ -14,12 +20,14 @@ help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Build targets:"
-	@echo "  all              Build everything (ELF + BIN + UF2)"
+	@echo "  all              Build everything (ELF + BIN + UF2 + C++)"
+	@echo "                   Override version: make all VERSION=0.3.2"
 	@echo "  embedded         Build bootloader + firmware (RP2040)"
 	@echo "  host             Build upload tool (host)"
 	@echo "  bootloader       Build bootloader only"
 	@echo "  firmware         Build firmware only"
-	@echo "  upload           Build upload tool only"
+	@echo "  upload           Build upload tool (Linux)"
+	@echo "  upload-windows   Build upload tool (Windows, cross-compile)"
 	@echo "  bootloader-bin   Build crispy-bootloader.bin"
 	@echo "  firmware-bin     Build crispy-fw-sample-rs.bin"
 	@echo "  firmware-cpp     Build C++ firmware sample (CMake + Pico SDK)"
@@ -30,11 +38,14 @@ help:
 	@echo "  run-bootloader   Flash + run bootloader with defmt/RTT"
 	@echo ""
 	@echo "Quality targets:"
-	@echo "  clippy           Run clippy lints"
+	@echo "  lint             Run all linters (Rust clippy + Python ruff + Markdown)"
+	@echo "  clippy           Run Rust clippy lints"
 	@echo "  lint-md          Run Markdown linter (markdownlint-cli2)"
-	@echo "  test             Run unit tests"
-	@echo "  test-integration Run hardware integration tests (needs SWD + board)"
-	@echo "  test-deployment  Run end-to-end deployment test (needs SWD + board)"
+	@echo "  test-unit        Run all unit tests (Rust + Python)"
+	@echo "  test-integration Run all integration tests (needs SWD + board)"
+	@echo "  test-version     Run version injection tests only (no hardware)"
+	@echo "  test-deployment  Run deployment tests only (needs SWD + board)"
+	@echo "  test-ci-scripts  Run CI script tests (no hardware)"
 	@echo ""
 	@echo "Setup:"
 	@echo "  install-tools    Install cargo-binutils (rust-objcopy)"
@@ -45,8 +56,8 @@ help:
 	@echo "  reset            Reset the device via SWD"
 	@echo "  clean            Clean build artifacts"
 
-# Build everything (ELF + BIN + UF2)
-all: bootloader-uf2 firmware-bin
+# Build everything (ELF + BIN + UF2 + C++ + upload tools Linux/Windows)
+all: bootloader-uf2 firmware-bin firmware-cpp upload upload-windows
 
 # Build embedded packages (bootloader + firmware)
 embedded:
@@ -54,7 +65,7 @@ embedded:
 
 # Build host upload tool
 host:
-	cargo build --release -p crispy-upload
+	cargo build --release -p crispy-upload-rs
 
 # Individual targets
 bootloader:
@@ -64,7 +75,10 @@ firmware:
 	cargo build --release -p crispy-fw-sample-rs --target $(EMBEDDED_TARGET)
 
 upload:
-	cargo build --release -p crispy-upload
+	cargo build --release -p crispy-upload-rs
+
+upload-windows:
+	cargo build --release -p crispy-upload-rs --target $(WINDOWS_TARGET)
 
 # Binary conversion targets
 bootloader-bin: bootloader
@@ -83,7 +97,7 @@ firmware-cpp:
 
 # UF2 targets
 bootloader-uf2: bootloader-bin host
-	cargo run --release -p crispy-upload -- bin2uf2 $(RELEASE_DIR)/crispy-bootloader.bin $(RELEASE_DIR)/crispy-bootloader.uf2 --base-address 0x10000000
+	cargo run --release -p crispy-upload-rs -- bin2uf2 $(RELEASE_DIR)/crispy-bootloader.bin $(RELEASE_DIR)/crispy-bootloader.uf2 --base-address 0x10000000
 
 # Flash/run bootloader via SWD
 flash-bootloader:
@@ -93,34 +107,48 @@ run-bootloader:
 	cargo run --release -p crispy-bootloader --target $(EMBEDDED_TARGET)
 
 # Linting
+lint: clippy lint-python lint-md
+
 clippy:
-	cargo clippy -p crispy-upload -- -D warnings
+	cargo clippy -p crispy-upload-rs -- -D warnings
 	cargo clippy -p crispy-bootloader -p crispy-fw-sample-rs --target $(EMBEDDED_TARGET) -- -D warnings
+
+lint-python:
+	cd crispy-common-python && uv run ruff check .
 
 lint-md:
 	npx --yes markdownlint-cli2
 
-# Tests
-test:
-	cargo test -p crispy-common
+# Unit tests (Rust + Python, no hardware needed)
+test-unit:
+	cargo test -p crispy-common-rs
+	cd crispy-common-python && uv run pytest -v
 
-# Integration tests (requires SWD probe + RP2040 board)
-# Override CRISPY_DEVICE if auto-detection doesn't work
-test-integration: all
-	cd scripts/python && uv run pytest tests/test_integration.py -v
+# All integration tests (version + bootsequence + deployment)
+test-integration:
+	cd tests/integration && uv run pytest -v --tb=short
 
-# End-to-end deployment test (erase -> flash -> upload -> boot -> bank switch -> wipe)
-test-deployment: all firmware-cpp
-	cd scripts/python && uv run pytest tests/test_deployment.py -v --tb=short
+# Version injection test only (no hardware needed)
+test-version:
+	cd tests/integration && uv run pytest boot/version/ -v
+
+# End-to-end deployment test only
+test-deployment:
+	cd tests/integration && uv run pytest boot/deployment/ -v --tb=short
+
+# CI script tests
+test-ci-scripts:
+	./scripts/ci/test-prepare-release-assets.sh
 
 # Clean
 clean:
 	cargo clean
 	rm -rf $(CPP_FW_BUILD)
 
-# Install cargo-binutils (provides rust-objcopy)
+# Install cargo-binutils + Windows cross-compilation target
 install-tools:
 	rustup component add llvm-tools-preview
+	rustup target add x86_64-pc-windows-gnu
 	cargo install cargo-binutils
 
 # Install custom probe-rs with software breakpoint support (required for RAM debugging)

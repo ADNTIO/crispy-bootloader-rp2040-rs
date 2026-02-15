@@ -1,5 +1,5 @@
 [workspace]
-members = ["crispy-fw-sample-rs", "crispy-bootloader", "crispy-common", "crispy-upload"]
+members = ["crispy-fw-sample-rs", "crispy-bootloader", "crispy-common-rs", "crispy-upload-rs"]
 resolver = "2"
 
 [workspace.package]

@@ -38,7 +38,7 @@ cp target/thumbv6m-none-eabi/release/crispy-bootloader.uf2 /media/$USER/RPI-RP2/
 ## 3. Verify bootloader is alive
 
 ```bash
-cargo run --release -p crispy-upload -- --port /dev/ttyACM0 status
+cargo run --release -p crispy-upload-rs -- --port /dev/ttyACM0 status
 ```
 
 You should see bootloader version, active bank, and firmware bank version fields.

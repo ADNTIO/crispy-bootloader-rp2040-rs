@@ -97,7 +97,7 @@ class TestTransportInit:
         mock_serial = Mock()
         mock_serial_class.return_value = mock_serial
 
-        t = Transport("/dev/ttyACM0")
+        Transport("/dev/ttyACM0")
 
         mock_serial_class.assert_called_once_with(
             "/dev/ttyACM0", 115200, timeout=5.0
@@ -111,7 +111,7 @@ class TestTransportInit:
         mock_serial = Mock()
         mock_serial_class.return_value = mock_serial
 
-        t = Transport("/dev/ttyUSB0", baudrate=9600, timeout=10.0)
+        Transport("/dev/ttyUSB0", baudrate=9600, timeout=10.0)
 
         mock_serial_class.assert_called_once_with(
             "/dev/ttyUSB0", 9600, timeout=10.0
@@ -129,7 +129,7 @@ class TestTransportContextManager:
         mock_serial.is_open = True
         mock_serial_class.return_value = mock_serial
 
-        with Transport("/dev/ttyACM0") as t:
+        with Transport("/dev/ttyACM0"):
             pass
 
         mock_serial.close.assert_called_once()
@@ -143,7 +143,7 @@ class TestTransportContextManager:
         mock_serial_class.return_value = mock_serial
 
         with pytest.raises(RuntimeError):
-            with Transport("/dev/ttyACM0") as t:
+            with Transport("/dev/ttyACM0"):
                 raise RuntimeError("test")
 
         mock_serial.close.assert_called_once()

@@ -29,7 +29,7 @@ fn usb_bus_ref() -> &'static UsbBusAllocator<UsbBus> {
     unsafe { (*core::ptr::addr_of!(USB_BUS)).as_ref().unwrap() }
 }
 
-const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
+const FW_VERSION: &str = env!("CRISPY_VERSION");
 
 struct BufWriter<'b> {
     buf: &'b mut [u8],
