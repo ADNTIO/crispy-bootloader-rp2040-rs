@@ -8,7 +8,7 @@ use crispy_common::protocol::{
     parse_semver, AckStatus, BootData, Command, Response, FW_A_ADDR, FW_BANK_SIZE, FW_B_ADDR,
 };
 
-const BOOTLOADER_VERSION: &str = env!("CARGO_PKG_VERSION");
+const BOOTLOADER_VERSION: &str = env!("CRISPY_VERSION");
 
 fn bank_addr(bank: u8) -> Option<u32> {
     match bank {
