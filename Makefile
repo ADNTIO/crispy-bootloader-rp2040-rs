@@ -10,7 +10,7 @@ ifdef VERSION
 $(shell printf '$(VERSION)' > VERSION)
 endif
 
-.PHONY: help all embedded host bootloader firmware firmware-cpp upload upload-windows clean lint clippy lint-python lint-md test-unit test-version test-integration test-ci-scripts
+.PHONY: help all embedded host bootloader firmware firmware-cpp upload upload-windows clean lint clippy lint-python lint-md test-unit test-integration test-ci-scripts
 .PHONY: bootloader-bin firmware-bin firmware-cpp-bin bootloader-uf2
 .PHONY: flash-bootloader run-bootloader
 .PHONY: install-probe-rs install-tools update-mode reset
@@ -43,7 +43,6 @@ help:
 	@echo "  lint-md          Run Markdown linter (markdownlint-cli2)"
 	@echo "  test-unit        Run all unit tests (Rust + Python)"
 	@echo "  test-integration Run all integration tests (needs SWD + board)"
-	@echo "  test-version     Run version injection tests only (no hardware)"
 	@echo "  test-ci-scripts  Run CI script tests (no hardware)"
 	@echo ""
 	@echo "Setup:"
@@ -126,10 +125,6 @@ test-unit:
 # All integration tests (version + bootsequence + deployment)
 test-integration:
 	cd tests/integration && uv run pytest -v --tb=short
-
-# Version injection test only (no hardware needed)
-test-version:
-	cd tests/integration && uv run pytest boot/version/ -v
 
 # CI script tests
 test-ci-scripts:

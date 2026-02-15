@@ -11,8 +11,6 @@ The test builds twice with different version numbers (0.3.2 and 0.3.4)
 and checks that each artifact contains the expected version string.
 
 Usage:
-    make test-version
-    # or directly
     cd tests/integration && uv run pytest boot/version/ -v
 """
 
@@ -47,18 +45,31 @@ class TestVersionInjection:
         """Build CLI + embedded targets."""
         result = subprocess.run(
             ["cargo", "build", "--release", "-p", "crispy-upload-rs"],
-            cwd=root, capture_output=True, text=True, timeout=120,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
-        assert result.returncode == 0, f"cargo build crispy-upload-rs failed:\n{result.stderr}"
+        assert (
+            result.returncode == 0
+        ), f"cargo build crispy-upload-rs failed:\n{result.stderr}"
 
         result = subprocess.run(
             [
-                "cargo", "build", "--release",
-                "-p", "crispy-bootloader",
-                "-p", "crispy-fw-sample-rs",
-                "--target", EMBEDDED_TARGET,
+                "cargo",
+                "build",
+                "--release",
+                "-p",
+                "crispy-bootloader",
+                "-p",
+                "crispy-fw-sample-rs",
+                "--target",
+                EMBEDDED_TARGET,
             ],
-            cwd=root, capture_output=True, text=True, timeout=120,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         assert result.returncode == 0, f"cargo build embedded failed:\n{result.stderr}"
 
@@ -67,9 +78,13 @@ class TestVersionInjection:
         """Run crispy-upload --version and return the output."""
         result = subprocess.run(
             [str(root / "target/release/crispy-upload"), "--version"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
-        assert result.returncode == 0, f"crispy-upload --version failed:\n{result.stderr}"
+        assert (
+            result.returncode == 0
+        ), f"crispy-upload --version failed:\n{result.stderr}"
         return result.stdout.strip()
 
     @staticmethod
@@ -97,9 +112,9 @@ class TestVersionInjection:
 
         # CLI
         cli_output = self._cli_version(root)
-        assert "0.3.2" in cli_output, (
-            f"Expected '0.3.2' in CLI output, got: {cli_output}"
-        )
+        assert (
+            "0.3.2" in cli_output
+        ), f"Expected '0.3.2' in CLI output, got: {cli_output}"
 
         # Bootloader ELF
         assert self._binary_contains_version(
@@ -122,9 +137,9 @@ class TestVersionInjection:
 
         # CLI
         cli_output = self._cli_version(root)
-        assert "0.3.4" in cli_output, (
-            f"Expected '0.3.4' in CLI output, got: {cli_output}"
-        )
+        assert (
+            "0.3.4" in cli_output
+        ), f"Expected '0.3.4' in CLI output, got: {cli_output}"
 
         # Bootloader ELF
         assert self._binary_contains_version(
