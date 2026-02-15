@@ -126,7 +126,6 @@ test-unit:
 test-integration:
 	cd tests/integration && uv run pytest -v --tb=short
 
-
 # CI script tests
 test-ci-scripts:
 	./scripts/ci/test-prepare-release-assets.sh
