@@ -3,9 +3,9 @@
 
 """Common fixtures for boot integration tests."""
 
-from pathlib import Path
-
 import pytest
+
+from crispy_board import project_root_from
 
 
 @pytest.fixture(scope="session")
@@ -28,8 +28,5 @@ def skip_flash(request):
 
 @pytest.fixture(scope="session")
 def project_root():
-    """Get the project root directory.
-
-    Path: tests/integration/boot/conftest.py  →  4 parents up = workspace root.
-    """
-    return Path(__file__).parent.parent.parent.parent
+    """Get the project root directory."""
+    return project_root_from(__file__)

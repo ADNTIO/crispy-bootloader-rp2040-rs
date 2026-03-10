@@ -10,13 +10,6 @@ Environment variables (used as defaults when CLI options are not provided):
 """
 
 import os
-import sys
-from pathlib import Path
-
-# Add the boot/ directory so that ``import hardware`` works everywhere.
-_BOOT_DIR = str(Path(__file__).parent / "boot")
-if _BOOT_DIR not in sys.path:
-    sys.path.insert(0, _BOOT_DIR)
 
 
 def _env_bool(name: str) -> bool:

@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from hardware import (
+from crispy_board import (
     enter_update_mode_via_swd,
     find_bootloader_port,
     flash_elf,

@@ -18,28 +18,26 @@ Environment variables:
     CRISPY_SKIP_FLASH  Set to "1" to skip erase+flash steps
 """
 
-import subprocess
 import time
 from pathlib import Path
 
 import pytest
 import serial
 
-from hardware import (
-    CHIP,
+from crispy_board import (
+    EMBEDDED_TARGET,
+    PID_BOOTLOADER,
+    PID_FW_RUST,
     enter_update_mode_via_swd,
+    erase_boot_data,
     find_firmware_port,
     flash_uf2,
+    project_root_from,
     run_crispy_upload,
-    wait_for_serial_banner,
 )
 
-# USB identifiers
-PID_BOOTLOADER = "000a"  # VID=2E8A, also used by C++ firmware (Pico SDK default)
-PID_FW_RUST = "000b"  # VID=2E8A, Rust firmware uses a distinct PID
-
 # Artifact paths (relative to project root)
-TARGET_DIR = Path("target/thumbv6m-none-eabi/release")
+TARGET_DIR = Path(f"target/{EMBEDDED_TARGET}/release")
 BOOTLOADER_ELF = TARGET_DIR / "crispy-bootloader"
 BOOTLOADER_UF2 = TARGET_DIR / "crispy-bootloader.uf2"
 FW_RS_BIN = TARGET_DIR / "crispy-fw-sample-rs.bin"
@@ -66,7 +64,7 @@ class TestDeployment:
 
     @staticmethod
     def _project_root() -> Path:
-        return Path(__file__).parent.parent.parent.parent.parent
+        return project_root_from(__file__)
 
     @classmethod
     def _find_bootloader_port(cls, timeout: float = 15.0) -> str:
@@ -88,37 +86,7 @@ class TestDeployment:
         if skip_flash:
             pytest.skip("Flash skipped (--skip-flash / CRISPY_SKIP_FLASH)")
 
-        import tempfile
-
-        # Write a 4KB sector of 0xFF (erased flash) to invalidate BootData
-        boot_data_addr = 0x1019_0000
-        sector = b"\xff" * 4096
-        with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
-            f.write(sector)
-            blank_path = f.name
-
-        try:
-            result = subprocess.run(
-                [
-                    "probe-rs",
-                    "download",
-                    "--chip",
-                    CHIP,
-                    "--binary-format",
-                    "bin",
-                    "--base-address",
-                    hex(boot_data_addr),
-                    blank_path,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            assert (
-                result.returncode == 0
-            ), f"probe-rs erase boot data failed:\n{result.stdout}\n{result.stderr}"
-        finally:
-            Path(blank_path).unlink(missing_ok=True)
+        assert erase_boot_data(), "Failed to erase boot data via SWD"
 
     def test_02_build_artifacts(self, skip_build):
         """Build bootloader, Rust firmware, and C++ firmware."""

@@ -21,7 +21,8 @@ from pathlib import Path
 
 import pytest
 
-EMBEDDED_TARGET = "thumbv6m-none-eabi"
+from crispy_board import EMBEDDED_TARGET, build_packages, project_root_from
+
 RELEASE_DIR = Path(f"target/{EMBEDDED_TARGET}/release")
 
 pytestmark = pytest.mark.version
@@ -32,7 +33,7 @@ class TestVersionInjection:
 
     @staticmethod
     def _project_root() -> Path:
-        return Path(__file__).parent.parent.parent.parent.parent
+        return project_root_from(__file__)
 
     @staticmethod
     def _read_version(root: Path) -> str:
@@ -45,20 +46,11 @@ class TestVersionInjection:
     @staticmethod
     def _build_all(root: Path):
         """Build CLI + embedded targets."""
-        result = subprocess.run(
-            ["cargo", "build", "--release", "-p", "crispy-upload-rs"],
-            cwd=root, capture_output=True, text=True, timeout=120,
-        )
+        result = build_packages(root, ["crispy-upload-rs"], target=None)
         assert result.returncode == 0, f"cargo build crispy-upload-rs failed:\n{result.stderr}"
 
-        result = subprocess.run(
-            [
-                "cargo", "build", "--release",
-                "-p", "crispy-bootloader",
-                "-p", "crispy-fw-sample-rs",
-                "--target", EMBEDDED_TARGET,
-            ],
-            cwd=root, capture_output=True, text=True, timeout=120,
+        result = build_packages(
+            root, ["crispy-bootloader", "crispy-fw-sample-rs"],
         )
         assert result.returncode == 0, f"cargo build embedded failed:\n{result.stderr}"
 
