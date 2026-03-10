@@ -184,12 +184,8 @@ fn main() -> ! {
     // Blink to signal firmware alive
     crispy_common::blink(&mut led_pin, &mut timer, 5, 100);
 
-    // Confirm boot using library
-    if flash::confirm_boot() {
-        defmt::println!("Boot confirmed");
-    } else {
-        defmt::println!("BootData invalid, skipping confirmation");
-    }
+    let confirmed = flash::confirm_boot();
+    defmt::println!("Boot confirm: {}", confirmed);
 
     // Initialize USB
     let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
