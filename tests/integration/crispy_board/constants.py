@@ -1,9 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ADNT Sarl <info@adnt.io>
 
-"""Shared constants for board instrumentation."""
-
-# Chip
 CHIP = "rp2040"
 
 # Memory addresses (matching crispy-common-rs/src/protocol.rs)
@@ -19,5 +16,4 @@ DEFAULT_VID = "2e8a"
 PID_BOOTLOADER = "000a"
 PID_FW_RUST = "000b"
 
-# Build
 EMBEDDED_TARGET = "thumbv6m-none-eabi"

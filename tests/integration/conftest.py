@@ -1,24 +1,14 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ADNT Sarl <info@adnt.io>
 
-"""Root pytest configuration for integration tests.
-
-Environment variables (used as defaults when CLI options are not provided):
-    CRISPY_DEVICE       Serial port (e.g. /dev/ttyACM0)
-    CRISPY_SKIP_BUILD   Set to "1" to skip building
-    CRISPY_SKIP_FLASH   Set to "1" to skip flashing
-"""
-
 import os
 
 
 def _env_bool(name: str) -> bool:
-    """Read an environment variable as a boolean (truthy: '1', 'true', 'yes')."""
     return os.environ.get(name, "").lower() in ("1", "true", "yes")
 
 
 def pytest_addoption(parser):
-    """Add custom command-line options."""
     parser.addoption(
         "--device",
         action="store",

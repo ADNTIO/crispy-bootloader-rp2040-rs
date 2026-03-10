@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ADNT Sarl <info@adnt.io>
 
-"""Serial port utilities."""
-
 import serial
 import time
 
@@ -10,11 +8,7 @@ import time
 def wait_for_serial_banner(
     port: str, expected_text: str, timeout: float = 10.0,
 ) -> str:
-    """Open a serial port and read until *expected_text* appears.
-
-    Returns the full text read so far (including the matching line).
-    Raises ``TimeoutError`` if the text is not found within *timeout* seconds.
-    """
+    """Read from serial port until *expected_text* appears or timeout."""
     start = time.time()
     buf = ""
     with serial.Serial(port, baudrate=115200, timeout=1) as ser:

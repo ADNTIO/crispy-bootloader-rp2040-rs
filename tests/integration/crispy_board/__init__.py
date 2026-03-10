@@ -1,16 +1,12 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ADNT Sarl <info@adnt.io>
 
-"""Board instrumentation library for integration tests.
-
-Provides probe-rs wrappers, SWD/UF2 flashing, USB device discovery,
-serial helpers, and cargo build utilities.
-"""
-
 from crispy_board.cargo import (  # noqa: F401
     build_packages,
+    objcopy,
     project_root_from,
     run_crispy_upload,
+    run_make,
 )
 from crispy_board.constants import (  # noqa: F401
     BOOT2_ADDR,
@@ -42,4 +38,5 @@ from crispy_board.flash import (  # noqa: F401
 )
 from crispy_board.probe import ProbeResult, download_binary  # noqa: F401
 from crispy_board.probe import run as run_probe_rs  # noqa: F401
+from crispy_board.protocol import upload_firmware  # noqa: F401
 from crispy_board.serial import wait_for_serial_banner  # noqa: F401

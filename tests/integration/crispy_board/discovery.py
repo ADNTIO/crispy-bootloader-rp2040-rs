@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ADNT Sarl <info@adnt.io>
 
-"""USB device and serial port discovery with polling."""
-
 import glob as _glob
 import json
 import os
@@ -22,14 +20,7 @@ def poll_until(
     interval: float = 0.5,
     description: str = "",
 ) -> "T":
-    """Poll *predicate* until it returns a truthy value, or raise TimeoutError.
-
-    Args:
-        predicate: Callable returning a value (found) or None (not yet).
-        timeout: Maximum time to wait in seconds.
-        interval: Sleep between attempts in seconds.
-        description: Human-readable description for the TimeoutError message.
-    """
+    """Poll *predicate* until it returns a truthy value, or raise TimeoutError."""
     start = time.time()
     while time.time() - start < timeout:
         result = predicate()
@@ -44,15 +35,10 @@ def poll_until(
 def find_rpi_rp2_mount(timeout: float = 15.0) -> Path:
     """Wait for the RPI-RP2 mass-storage drive and return its mount point.
 
-    Polls ``/proc/mounts`` for a filesystem whose mount path contains
-    ``RPI-RP2``.  If the drive appears as a block device but is not yet
-    mounted, attempts to mount it via ``udisksctl``.
-
-    Raises ``TimeoutError`` if the drive is not found within *timeout* seconds.
+    Checks /proc/mounts first, then falls back to lsblk + udisksctl auto-mount.
     """
 
     def _check() -> "Path | None":
-        # Fast path: check /proc/mounts
         try:
             with open("/proc/mounts") as f:
                 for line in f:
@@ -62,7 +48,6 @@ def find_rpi_rp2_mount(timeout: float = 15.0) -> Path:
         except OSError:
             pass
 
-        # Slow path: find unmounted block device via lsblk and mount it
         try:
             result = subprocess.run(
                 ["lsblk", "-J", "-o", "NAME,LABEL,MOUNTPOINT"],
@@ -75,7 +60,6 @@ def find_rpi_rp2_mount(timeout: float = 15.0) -> Path:
                         mp = dev.get("mountpoint")
                         if mp:
                             return Path(mp)
-                        # Try auto-mount
                         name = dev["name"]
                         subprocess.run(
                             ["udisksctl", "mount", "-b", f"/dev/{name}"],
@@ -90,7 +74,6 @@ def find_rpi_rp2_mount(timeout: float = 15.0) -> Path:
 
 
 def _walk_lsblk(devices):
-    """Recursively yield devices from a ``lsblk -J`` tree."""
     for dev in devices:
         yield dev
         for child in dev.get("children", []):
@@ -101,13 +84,7 @@ def _walk_lsblk(devices):
 def find_firmware_port(
     pid: str, timeout: float = 10.0, vid: str = DEFAULT_VID,
 ) -> str:
-    """Find a serial port by USB VID/PID via sysfs.
-
-    Args:
-        pid: USB Product ID (hex string, e.g. "000a").
-        timeout: How long to poll before raising TimeoutError.
-        vid: USB Vendor ID (hex string, defaults to "2e8a").
-    """
+    """Find a serial port by USB VID/PID via sysfs."""
 
     def _check() -> "str | None":
         for port in _glob.glob("/dev/ttyACM*"):
@@ -132,5 +109,4 @@ def find_firmware_port(
 
 
 def find_bootloader_port(timeout: float = 10.0) -> str:
-    """Find the serial port for the Crispy Bootloader by USB ID."""
     return find_firmware_port(pid=PID_BOOTLOADER, timeout=timeout)

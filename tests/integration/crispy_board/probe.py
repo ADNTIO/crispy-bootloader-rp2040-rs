@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ADNT Sarl <info@adnt.io>
 
-"""Low-level probe-rs subprocess wrapper."""
-
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -13,14 +11,11 @@ from crispy_board.constants import CHIP
 
 @dataclass
 class ProbeResult:
-    """Result of a probe-rs command."""
-
     success: bool
     output: str
 
 
 def run(*args: str, timeout: float = 30.0) -> ProbeResult:
-    """Run a probe-rs command and return the result."""
     cmd = ["probe-rs"] + list(args)
     result = subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout,
@@ -34,12 +29,7 @@ def run(*args: str, timeout: float = 30.0) -> ProbeResult:
 def download_binary(
     data: bytes, base_address: int, timeout: float = 30.0,
 ) -> ProbeResult:
-    """Write binary data to flash via probe-rs download.
-
-    Creates a temporary file, downloads it to the given address, and cleans up.
-    This factorizes the tempfile pattern used by erase_boot_data,
-    force_bootsel_mode, and test_deployment.
-    """
+    """Write binary data to flash via a temp file and probe-rs download."""
     with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
         f.write(data)
         tmp_path = f.name

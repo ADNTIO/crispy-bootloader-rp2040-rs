@@ -8,14 +8,8 @@ Validates the full lifecycle:
     erase -> flash bootloader -> upload firmwares (Rust + C++)
     -> boot -> bank switching -> wipe.
 
-Designed for CI with a physical RP2040 connected via SWD + USB.
-
 Usage:
     cd tests/integration && uv run pytest boot/deployment/ -v --tb=short
-
-Environment variables:
-    CRISPY_SKIP_BUILD  Set to "1" to skip the build step
-    CRISPY_SKIP_FLASH  Set to "1" to skip erase+flash steps
 """
 
 import time
@@ -34,9 +28,9 @@ from crispy_board import (
     flash_uf2,
     project_root_from,
     run_crispy_upload,
+    run_make,
 )
 
-# Artifact paths (relative to project root)
 TARGET_DIR = Path(f"target/{EMBEDDED_TARGET}/release")
 BOOTLOADER_ELF = TARGET_DIR / "crispy-bootloader"
 BOOTLOADER_UF2 = TARGET_DIR / "crispy-bootloader.uf2"
@@ -47,20 +41,11 @@ pytestmark = pytest.mark.deployment
 
 
 class TestDeployment:
-    """Sequential end-to-end deployment tests.
+    """Sequential end-to-end deployment tests (ordered by numeric prefix)."""
 
-    Tests are ordered by numeric prefix and share state via class attributes.
-    Each test depends on the previous ones having passed.
-    """
-
-    # Shared state across tests
     bootloader_port: str = ""
     fw_rs_port: str = ""
     fw_cpp_port: str = ""
-
-    # ------------------------------------------------------------------ #
-    # Helpers
-    # ------------------------------------------------------------------ #
 
     @staticmethod
     def _project_root() -> Path:
@@ -72,117 +57,67 @@ class TestDeployment:
         cls.bootloader_port = port
         return port
 
-    # ------------------------------------------------------------------ #
-    # Test steps
-    # ------------------------------------------------------------------ #
-
     def test_01_erase_flash(self, skip_flash):
-        """Erase boot data via SWD to start from a clean state.
-
-        Instead of erasing the full 2MB flash (which can hang on some
-        RP2040 setups), we only wipe the BootData sector at 0x10190000.
-        The bootloader area is overwritten in test_03 anyway.
-        """
+        """Erase boot data sector to start from a clean state."""
         if skip_flash:
             pytest.skip("Flash skipped (--skip-flash / CRISPY_SKIP_FLASH)")
 
         assert erase_boot_data(), "Failed to erase boot data via SWD"
 
     def test_02_build_artifacts(self, skip_build):
-        """Build bootloader, Rust firmware, and C++ firmware."""
         if skip_build:
             pytest.skip("Build skipped (--skip-build / CRISPY_SKIP_BUILD)")
 
         root = self._project_root()
 
-        # Build only what deployment tests need (no Windows cross-compile).
-        # From-scratch builds can take several minutes (Pico SDK fetch + Rust
-        # compilation), so use a generous timeout.
-        result = subprocess.run(
-            ["make", "bootloader-uf2", "firmware-bin", "firmware-cpp", "upload"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            timeout=600,
+        result = run_make(
+            root, "bootloader-uf2", "firmware-bin", "firmware-cpp", "upload",
         )
         assert result.returncode == 0, f"make failed:\n{result.stderr}"
 
-        # Verify artifacts exist
         for path in (BOOTLOADER_ELF, FW_RS_BIN, FW_CPP_BIN):
             full = root / path
             assert full.exists(), f"Expected artifact not found: {full}"
 
     def test_03_flash_bootloader_uf2(self, skip_flash):
-        """Flash the bootloader UF2 via BOOTSEL mode and wait for USB enumeration.
-
-        Validates the user-facing UF2 flashing workflow:
-        invalidate boot2 → BOOTSEL → copy UF2 → reboot → bootloader running.
-        """
+        """Flash bootloader UF2 via BOOTSEL and enter update mode."""
         if skip_flash:
             pytest.skip("Flash skipped (--skip-flash / CRISPY_SKIP_FLASH)")
 
         root = self._project_root()
         uf2 = root / BOOTLOADER_UF2
 
-        assert uf2.exists(), (
-            f"UF2 not found: {uf2}\n" "Run 'make bootloader-uf2' first."
-        )
-
-        # Flash via UF2 (force BOOTSEL → copy UF2 → device reboots)
+        assert uf2.exists(), f"UF2 not found: {uf2}\nRun 'make bootloader-uf2' first."
         assert flash_uf2(uf2), "Failed to flash bootloader via UF2"
-
-        # After reboot the bootloader finds no valid boot data (erased in
-        # test_01) and enters update mode automatically.  Belt-and-suspenders:
-        # re-erase boot data + write RAM magic to guarantee update mode.
         assert enter_update_mode_via_swd(), "Failed to enter update mode via SWD"
 
         port = self._find_bootloader_port()
         print(f"Bootloader detected on {port}")
 
     def test_04_upload_fw_rs_bank_a(self):
-        """Upload Rust firmware to bank A via crispy-upload-rs."""
         root = self._project_root()
 
-        # Enter update mode via SWD (ensures bootloader is in update mode)
         assert enter_update_mode_via_swd(), "Failed to enter update mode via SWD"
 
         port = self._find_bootloader_port()
 
         fw_path = root / FW_RS_BIN
         ok, stdout, stderr = run_crispy_upload(
-            root,
-            port,
-            "upload",
-            str(fw_path),
-            "--bank",
-            "0",
-            "--version",
-            "1",
+            root, port, "upload", str(fw_path), "--bank", "0", "--version", "1",
         )
         assert ok, f"Upload Rust FW to bank A failed:\n{stdout}\n{stderr}"
-        print(f"Rust firmware uploaded to bank A:\n{stdout}")
 
     def test_05_upload_fw_cpp_bank_b(self):
-        """Upload C++ firmware to bank B via crispy-upload-rs."""
         root = self._project_root()
         port = self._find_bootloader_port()
 
         fw_path = root / FW_CPP_BIN
         ok, stdout, stderr = run_crispy_upload(
-            root,
-            port,
-            "upload",
-            str(fw_path),
-            "--bank",
-            "1",
-            "--version",
-            "1",
+            root, port, "upload", str(fw_path), "--bank", "1", "--version", "1",
         )
         assert ok, f"Upload C++ FW to bank B failed:\n{stdout}\n{stderr}"
-        print(f"C++ firmware uploaded to bank B:\n{stdout}")
 
     def test_06_verify_status_after_upload(self):
-        """Verify bootloader version and both banks are populated."""
         root = self._project_root()
         port = self._find_bootloader_port()
 
@@ -192,74 +127,50 @@ class TestDeployment:
         output = stdout + stderr
         low = output.lower()
 
-        # Bootloader version must match the VERSION file
         expected_version = (root / "VERSION").read_text().strip()
         expected_line = f"bootloader:  {expected_version}"
-        assert (
-            expected_line in low
-        ), f"Expected '{expected_line}' in status output:\n{output}"
+        assert expected_line in low, f"Expected '{expected_line}' in:\n{output}"
 
-        # Both banks should have version 1
-        assert (
-            "version a:   1" in low
-        ), f"Expected Version A = 1 in status output:\n{output}"
-        assert (
-            "version b:   1" in low
-        ), f"Expected Version B = 1 in status output:\n{output}"
-        print(f"Status after upload:\n{output}")
+        assert "version a:   1" in low, f"Expected Version A = 1 in:\n{output}"
+        assert "version b:   1" in low, f"Expected Version B = 1 in:\n{output}"
 
     def test_07_set_bank_a_and_reboot(self):
-        """Set bank A active, reboot, and verify Rust firmware is running."""
         root = self._project_root()
         port = self._find_bootloader_port()
 
-        # Ensure bank A is active
         ok, stdout, stderr = run_crispy_upload(root, port, "set-bank", "0")
         assert ok, f"set-bank 0 failed:\n{stdout}\n{stderr}"
 
-        # Reboot into firmware
         ok, stdout, stderr = run_crispy_upload(root, port, "reboot")
         assert ok, f"reboot failed:\n{stdout}\n{stderr}"
 
-        # Wait for Rust firmware to enumerate (PID 000B)
         time.sleep(3.0)
         fw_port = find_firmware_port(pid=PID_FW_RUST, timeout=15.0)
         TestDeployment.fw_rs_port = fw_port
-        print(f"Rust firmware detected on {fw_port}")
 
-        # Open serial and verify the firmware responds
         time.sleep(1.0)
         with serial.Serial(fw_port, baudrate=115200, timeout=3) as ser:
-            # Flush any pending data (welcome banner)
             ser.reset_input_buffer()
-            # Send empty line to sync prompt, then the real command
+            # Sync prompt then send command
             ser.write(b"\r\n")
             time.sleep(0.5)
             ser.reset_input_buffer()
             ser.write(b"status\r\n")
             time.sleep(1.0)
             response = ser.read(ser.in_waiting or 256).decode(errors="replace")
-            assert (
-                "Bank: 0" in response
-            ), f"Expected 'Bank: 0' in firmware response, got:\n{response}"
-            print(f"Rust firmware status:\n{response}")
+            assert "Bank: 0" in response, f"Expected 'Bank: 0', got:\n{response}"
 
     def test_08_fw_rs_reboot_to_bootloader(self):
-        """Send bootload command to Rust firmware and return to bootloader."""
         fw_port = TestDeployment.fw_rs_port
         assert fw_port, "Rust firmware port not set (test_07 must pass first)"
 
-        # Send bootload command
         with serial.Serial(fw_port, baudrate=115200, timeout=3) as ser:
             ser.write(b"bootload\r\n")
             time.sleep(0.5)
 
-        # Wait for the firmware port to disappear and bootloader to re-enumerate
         time.sleep(3.0)
         port = self._find_bootloader_port(timeout=15.0)
-        print(f"Bootloader re-detected on {port}")
 
-        # Verify we are back in update mode
         root = self._project_root()
         ok, stdout, stderr = run_crispy_upload(root, port, "status")
         assert ok, f"Status command failed:\n{stdout}\n{stderr}"
@@ -267,29 +178,22 @@ class TestDeployment:
         output = stdout + stderr
         assert "updatemode" in output.lower().replace(" ", "").replace(
             "_", ""
-        ), f"Expected UpdateMode in status output:\n{output}"
-        print(f"Bootloader status:\n{output}")
+        ), f"Expected UpdateMode in:\n{output}"
 
     def test_09_switch_to_bank_b(self):
-        """Switch active bank to B."""
         root = self._project_root()
         port = self._find_bootloader_port()
 
         ok, stdout, stderr = run_crispy_upload(root, port, "set-bank", "1")
         assert ok, f"set-bank 1 failed:\n{stdout}\n{stderr}"
 
-        # Verify active bank is now 1
         ok, stdout, stderr = run_crispy_upload(root, port, "status")
         assert ok, f"Status command failed:\n{stdout}\n{stderr}"
 
         output = stdout + stderr
-        assert (
-            "active bank: 1" in output.lower()
-        ), f"Expected bank B (1) active in status output:\n{output}"
-        print(f"Status after bank switch:\n{output}")
+        assert "active bank: 1" in output.lower(), f"Expected bank B active in:\n{output}"
 
     def test_10_reboot_to_fw_cpp(self):
-        """Reboot into C++ firmware on bank B and verify version + bank."""
         root = self._project_root()
         port = self._find_bootloader_port()
 
@@ -301,45 +205,27 @@ class TestDeployment:
         fw_port = find_firmware_port(pid=PID_BOOTLOADER, timeout=15.0)
         TestDeployment.fw_cpp_port = fw_port
 
-        # Query firmware version and boot status via serial commands.
         time.sleep(1.0)
         with serial.Serial(fw_port, baudrate=115200, timeout=3) as ser:
-            # Flush any pending data (welcome banner lost before CDC connect)
             ser.reset_input_buffer()
             ser.write(b"\r\n")
             time.sleep(0.5)
             ser.reset_input_buffer()
 
-            # Query firmware version
             ser.write(b"version\r\n")
             time.sleep(1.0)
-            version_response = ser.read(ser.in_waiting or 256).decode(
-                errors="replace"
-            )
+            version_response = ser.read(ser.in_waiting or 256).decode(errors="replace")
             expected_version = (root / "VERSION").read_text().strip()
-            assert (
-                f"Version: {expected_version}" in version_response
-            ), (
-                f"Expected 'Version: {expected_version}' in C++ firmware "
-                f"version output:\n{version_response}"
+            assert f"Version: {expected_version}" in version_response, (
+                f"Expected 'Version: {expected_version}' in:\n{version_response}"
             )
 
-            # Query boot status
             ser.write(b"status\r\n")
             time.sleep(1.0)
-            status_response = ser.read(ser.in_waiting or 256).decode(
-                errors="replace"
-            )
-
-            # Verify it's the C++ firmware on bank 1
-            assert (
-                "Bank: 1" in status_response
-            ), f"Expected 'Bank: 1' in firmware response, got:\n{status_response}"
-            print(f"C++ firmware version: {version_response.strip()}")
-            print(f"C++ firmware status:\n{status_response}")
+            status_response = ser.read(ser.in_waiting or 256).decode(errors="replace")
+            assert "Bank: 1" in status_response, f"Expected 'Bank: 1', got:\n{status_response}"
 
     def test_11_fw_cpp_reboot_to_bootloader(self):
-        """Send bootload command to C++ firmware and return to bootloader."""
         fw_port = TestDeployment.fw_cpp_port
         assert fw_port, "C++ firmware port not set (test_10 must pass first)"
 
@@ -347,12 +233,9 @@ class TestDeployment:
             ser.write(b"bootload\r\n")
             time.sleep(0.5)
 
-        # Wait for bootloader to re-enumerate
         time.sleep(3.0)
         port = self._find_bootloader_port(timeout=15.0)
-        print(f"Bootloader re-detected on {port}")
 
-        # Verify update mode
         root = self._project_root()
         ok, stdout, stderr = run_crispy_upload(root, port, "status")
         assert ok, f"Status command failed:\n{stdout}\n{stderr}"
@@ -360,26 +243,21 @@ class TestDeployment:
         output = stdout + stderr
         assert "updatemode" in output.lower().replace(" ", "").replace(
             "_", ""
-        ), f"Expected UpdateMode in status output:\n{output}"
+        ), f"Expected UpdateMode in:\n{output}"
 
     def test_12_wipe_and_verify_update_mode(self):
-        """Wipe all firmware, reboot, and verify device stays in update mode."""
         root = self._project_root()
         port = self._find_bootloader_port()
 
-        # Wipe all firmware banks
         ok, stdout, stderr = run_crispy_upload(root, port, "wipe")
         assert ok, f"wipe failed:\n{stdout}\n{stderr}"
-        print(f"Wipe result:\n{stdout}")
 
-        # Reboot — with no valid firmware the bootloader should stay in update mode
         ok, stdout, stderr = run_crispy_upload(root, port, "reboot")
         assert ok, f"reboot failed:\n{stdout}\n{stderr}"
 
         time.sleep(3.0)
         port = self._find_bootloader_port(timeout=15.0)
 
-        # Wait for CDC to be ready after USB enumeration
         time.sleep(1.0)
 
         ok, stdout, stderr = run_crispy_upload(root, port, "status")
@@ -389,4 +267,3 @@ class TestDeployment:
         assert "updatemode" in output.lower().replace(" ", "").replace(
             "_", ""
         ), f"Expected UpdateMode after wipe, got:\n{output}"
-        print(f"Final status (post-wipe):\n{output}")
