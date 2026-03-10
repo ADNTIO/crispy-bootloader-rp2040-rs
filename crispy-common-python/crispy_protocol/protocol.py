@@ -1,13 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 ADNT Sarl <info@adnt.io>
 
-"""
-Crispy bootloader protocol definitions and serialization.
-
-This module defines the command/response protocol used to communicate
-with the bootloader over USB CDC.
-"""
-
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Optional, Union
@@ -17,7 +10,6 @@ from .varint import encode_varint, decode_varint
 
 
 class CommandType(IntEnum):
-    """Command types (postcard enum variant indices)."""
     GET_STATUS = 0
     START_UPDATE = 1
     DATA_BLOCK = 2
@@ -28,46 +20,36 @@ class CommandType(IntEnum):
 
 
 class Command:
-    """Command builder for bootloader protocol."""
-
     @staticmethod
     def get_status() -> bytes:
-        """Create a GetStatus command."""
         return encode_get_status()
 
     @staticmethod
     def start_update(bank: int, size: int, crc32: int, version: int) -> bytes:
-        """Create a StartUpdate command."""
         return encode_start_update(bank, size, crc32, version)
 
     @staticmethod
     def data_block(offset: int, data: bytes) -> bytes:
-        """Create a DataBlock command."""
         return encode_data_block(offset, data)
 
     @staticmethod
     def finish_update() -> bytes:
-        """Create a FinishUpdate command."""
         return encode_finish_update()
 
     @staticmethod
     def reboot() -> bytes:
-        """Create a Reboot command."""
         return encode_reboot()
 
     @staticmethod
     def set_active_bank(bank: int) -> bytes:
-        """Create a SetActiveBank command."""
         return encode_set_active_bank(bank)
 
     @staticmethod
     def wipe_all() -> bytes:
-        """Create a WipeAll command."""
         return encode_wipe_all()
 
 
 class AckStatus(IntEnum):
-    """Acknowledgment status codes."""
     OK = 0
     CRC_ERROR = 1
     FLASH_ERROR = 2
@@ -80,7 +62,6 @@ class AckStatus(IntEnum):
 
 
 class BootState(IntEnum):
-    """Bootloader state."""
     IDLE = 0
     UPDATE_MODE = 1
     RECEIVING = 2
@@ -90,14 +71,12 @@ class BootState(IntEnum):
 
 
 class Response:
-    """Response type constants."""
     TYPE_ACK = 0
     TYPE_STATUS = 1
 
 
 @dataclass
 class AckResponse:
-    """Acknowledgment response from bootloader."""
     status: AckStatus
     type: int = Response.TYPE_ACK
 
@@ -108,7 +87,6 @@ class AckResponse:
 
 @dataclass
 class StatusResponse:
-    """Status response from bootloader."""
     active_bank: int
     version_a: int
     version_b: int
@@ -121,17 +99,22 @@ class StatusResponse:
         return "A" if self.active_bank == 0 else "B"
 
 
-# Type alias for any response
 ResponseType = Union[AckResponse, StatusResponse]
 
 
+def _frame(data: bytes) -> bytes:
+    return cobs_encode(data) + b'\x00'
+
+
+def _simple_command(cmd: CommandType) -> bytes:
+    return _frame(bytes([cmd]))
+
+
 def encode_get_status() -> bytes:
-    """Encode a GetStatus command."""
-    return _frame(bytes([CommandType.GET_STATUS]))
+    return _simple_command(CommandType.GET_STATUS)
 
 
 def encode_start_update(bank: int, size: int, crc32: int, version: int) -> bytes:
-    """Encode a StartUpdate command."""
     payload = (
         bytes([CommandType.START_UPDATE, bank])
         + encode_varint(size)
@@ -142,7 +125,6 @@ def encode_start_update(bank: int, size: int, crc32: int, version: int) -> bytes
 
 
 def encode_data_block(offset: int, data: bytes) -> bytes:
-    """Encode a DataBlock command."""
     payload = (
         bytes([CommandType.DATA_BLOCK])
         + encode_varint(offset)
@@ -153,39 +135,22 @@ def encode_data_block(offset: int, data: bytes) -> bytes:
 
 
 def encode_finish_update() -> bytes:
-    """Encode a FinishUpdate command."""
-    return _frame(bytes([CommandType.FINISH_UPDATE]))
+    return _simple_command(CommandType.FINISH_UPDATE)
 
 
 def encode_reboot() -> bytes:
-    """Encode a Reboot command."""
-    return _frame(bytes([CommandType.REBOOT]))
+    return _simple_command(CommandType.REBOOT)
 
 
 def encode_set_active_bank(bank: int) -> bytes:
-    """Encode a SetActiveBank command."""
     return _frame(bytes([CommandType.SET_ACTIVE_BANK, bank]))
 
 
 def encode_wipe_all() -> bytes:
-    """Encode a WipeAll command."""
-    return _frame(bytes([CommandType.WIPE_ALL]))
+    return _simple_command(CommandType.WIPE_ALL)
 
 
 def decode_response(data: bytes) -> ResponseType:
-    """
-    Decode a COBS-framed response.
-
-    Args:
-        data: Raw bytes received (with trailing 0x00 delimiter)
-
-    Returns:
-        Decoded response (AckResponse or StatusResponse)
-
-    Raises:
-        ValueError: If response is malformed
-    """
-    # Remove trailing delimiter if present
     if data and data[-1] == 0:
         data = data[:-1]
 
@@ -196,12 +161,12 @@ def decode_response(data: bytes) -> ResponseType:
 
     resp_type = decoded[0]
 
-    if resp_type == 0:  # Ack
+    if resp_type == Response.TYPE_ACK:
         if len(decoded) < 2:
             raise ValueError("Truncated Ack response")
         return AckResponse(status=AckStatus(decoded[1]))
 
-    elif resp_type == 1:  # Status
+    elif resp_type == Response.TYPE_STATUS:
         if len(decoded) < 2:
             raise ValueError("Truncated Status response")
 
@@ -229,8 +194,3 @@ def decode_response(data: bytes) -> ResponseType:
 
     else:
         raise ValueError(f"Unknown response type: {resp_type}")
-
-
-def _frame(data: bytes) -> bytes:
-    """Apply COBS encoding and add delimiter."""
-    return cobs_encode(data) + b'\x00'
