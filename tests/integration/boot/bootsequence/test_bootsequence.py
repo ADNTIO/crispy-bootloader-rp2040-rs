@@ -17,8 +17,23 @@ from crispy_board import (
     objcopy,
     upload_firmware,
 )
+from crispy_protocol.crc32 import crc32
+from crispy_protocol.protocol import (
+    AckStatus,
+    BootState,
+    Command,
+    Response,
+)
 
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture
+def firmware_data(project_root):
+    path = project_root / "target" / "firmware.bin"
+    if not path.exists():
+        pytest.skip("Firmware binary not found")
+    return path.read_bytes()
 
 
 class TestBuildArtifacts:
@@ -42,11 +57,7 @@ class TestBuildArtifacts:
             pytest.skip("Build skipped")
 
         elf_path = (
-            project_root
-            / "target"
-            / EMBEDDED_TARGET
-            / "release"
-            / "crispy-fw-sample-rs"
+            project_root / "target" / EMBEDDED_TARGET / "release" / "crispy-fw-sample-rs"
         )
         bin_path = project_root / "target" / "firmware.bin"
 
@@ -69,8 +80,6 @@ class TestBuildArtifacts:
 class TestBootloaderStatus:
 
     def test_get_status(self, transport):
-        from crispy_protocol.protocol import Command, Response
-
         transport.send(Command.get_status())
 
         response = transport.receive()
@@ -83,8 +92,6 @@ class TestBootloaderStatus:
         print(f"State: {response.state}")
 
     def test_status_shows_update_mode(self, transport):
-        from crispy_protocol.protocol import BootState, Command
-
         transport.send(Command.get_status())
         response = transport.receive()
 
@@ -96,21 +103,7 @@ class TestBootloaderStatus:
 
 class TestFirmwareUpload:
 
-    @pytest.fixture
-    def firmware_path(self, project_root):
-        path = project_root / "target" / "firmware.bin"
-        if not path.exists():
-            pytest.skip("Firmware binary not found. Run build tests first.")
-        return path
-
-    @pytest.fixture
-    def firmware_data(self, firmware_path):
-        return firmware_path.read_bytes()
-
     def test_start_update_bank_a(self, transport, firmware_data):
-        from crispy_protocol.crc32 import crc32
-        from crispy_protocol.protocol import AckStatus, Command, Response
-
         size = len(firmware_data)
         checksum = crc32(firmware_data)
 
@@ -129,8 +122,6 @@ class TestFirmwareUpload:
         upload_firmware(transport, firmware_data, bank=0, version=3)
 
     def test_status_after_upload(self, transport, firmware_data):
-        from crispy_protocol.protocol import Command
-
         version = 42
         upload_firmware(transport, firmware_data, bank=0, version=version)
 
@@ -143,16 +134,7 @@ class TestFirmwareUpload:
 
 class TestBankSwitching:
 
-    @pytest.fixture
-    def firmware_data(self, project_root):
-        path = project_root / "target" / "firmware.bin"
-        if not path.exists():
-            pytest.skip("Firmware binary not found")
-        return path.read_bytes()
-
     def test_upload_to_bank_b(self, transport, firmware_data):
-        from crispy_protocol.protocol import Command
-
         version = 100
         upload_firmware(transport, firmware_data, bank=1, version=version)
 
@@ -166,37 +148,25 @@ class TestBankSwitching:
 class TestErrorHandling:
 
     def test_invalid_bank(self, transport):
-        from crispy_protocol.protocol import AckStatus, Command
-
         transport.send(Command.start_update(bank=2, size=1024, crc32=0, version=1))
         response = transport.receive()
-
         assert response.status == AckStatus.BANK_INVALID
 
     def test_zero_size(self, transport):
-        from crispy_protocol.protocol import AckStatus, Command
-
         transport.send(Command.start_update(bank=0, size=0, crc32=0, version=1))
         response = transport.receive()
-
         assert response.status == AckStatus.BANK_INVALID
 
     def test_data_block_without_start(self, transport):
-        from crispy_protocol.protocol import AckStatus, Command
-
         # Ensure idle state
         transport.send(Command.get_status())
         transport.receive()
 
         transport.send(Command.data_block(offset=0, data=b"\x00" * 256))
         response = transport.receive()
-
         assert response.status == AckStatus.BAD_STATE
 
     def test_wrong_offset(self, transport):
-        from crispy_protocol.crc32 import crc32
-        from crispy_protocol.protocol import AckStatus, Command
-
         data = b"\x00" * 2048
         transport.send(Command.start_update(bank=0, size=len(data), crc32=crc32(data), version=1))
         assert transport.receive().status == AckStatus.OK
@@ -207,12 +177,9 @@ class TestErrorHandling:
         # Wrong offset: should be 1024
         transport.send(Command.data_block(offset=512, data=data[1024:]))
         response = transport.receive()
-
         assert response.status == AckStatus.BAD_COMMAND
 
     def test_crc_mismatch(self, transport):
-        from crispy_protocol.protocol import AckStatus, Command
-
         data = b"\x00" * 1024
         wrong_crc = 0xDEADBEEF
 
@@ -224,20 +191,15 @@ class TestErrorHandling:
 
         transport.send(Command.finish_update())
         response = transport.receive()
-
         assert response.status == AckStatus.CRC_ERROR
 
 
 class TestReboot:
 
     def test_reboot_command(self, transport):
-        from crispy_protocol.protocol import AckStatus, Command
-
         transport.send(Command.reboot())
         response = transport.receive()
-
         assert response.status == AckStatus.OK
-
         time.sleep(2)
 
 
