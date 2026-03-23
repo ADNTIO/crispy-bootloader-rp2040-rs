@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ADNT Sarl <info@adnt.io>
 
 use crate::flash;
-use crc::{Crc, CRC_32_ISO_HDLC};
 use crispy_common::protocol::{FLASH_PAGE_SIZE, FLASH_SECTOR_SIZE};
-
-const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
 const FLASH_PROGRAM_BATCH_SIZE: u32 = FLASH_SECTOR_SIZE;
 
 unsafe extern "C" {
@@ -28,7 +25,7 @@ pub(super) fn fw_ram_buffer_size() -> u32 {
 }
 
 pub(super) fn compute_ram_crc32(size: u32) -> u32 {
-    let mut digest = CRC32.digest();
+    let mut digest = flash::CRC32.digest();
     let ram_base = fw_ram_buffer_ptr();
     let ram_slice = unsafe { core::slice::from_raw_parts(ram_base.cast_const(), size as usize) };
     digest.update(ram_slice);

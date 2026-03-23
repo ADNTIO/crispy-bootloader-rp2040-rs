@@ -21,7 +21,7 @@ use crispy_common::protocol::{
     BootData, BOOT_DATA_ADDR, FLASH_BASE, FLASH_PAGE_SIZE, FLASH_SECTOR_SIZE,
 };
 
-const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+pub(crate) const CRC32: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
 
 // RP2040 ROM table addresses (defined in RP2040 datasheet section 2.8.3)
 /// Pointer to the ROM function table (16-bit pointer stored at 0x14)

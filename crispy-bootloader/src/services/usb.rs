@@ -20,11 +20,6 @@ unsafe impl Sync for SyncQueue {}
 
 static COMMAND_QUEUE: SyncQueue = SyncQueue(UnsafeCell::new(Queue::new()));
 
-/// Initialize the command queue (call once at startup)
-pub fn init_command_queue() {
-    // spsc::Queue is already initialized statically
-}
-
 /// Push a command to the queue (called by USB service)
 #[allow(clippy::result_large_err)]
 pub fn push_command(cmd: Command) -> Result<(), Command> {

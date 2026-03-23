@@ -126,8 +126,9 @@ pub fn select_boot_bank(bd: &BootData, layout: &MemoryLayout) -> (u32, BootData)
     }
 
     let (primary_addr, fallback_addr) = bank_addresses(&bd, layout);
-    let (primary_crc, primary_size) = bank_metadata(&bd, bd.active_bank);
-    let (fallback_crc, fallback_size) = bank_metadata(&bd, toggle_bank(bd.active_bank));
+    // firmware_info returns (size, crc, version); unwrap is safe because active_bank is 0 or 1
+    let (primary_size, primary_crc, _) = bd.firmware_info(bd.active_bank).unwrap_or_default();
+    let (fallback_size, fallback_crc, _) = bd.firmware_info(toggle_bank(bd.active_bank)).unwrap_or_default();
 
     if validate_bank_with_crc(primary_addr, primary_crc, primary_size) {
         bd.boot_attempts += 1;
@@ -159,11 +160,7 @@ pub fn select_boot_bank(bd: &BootData, layout: &MemoryLayout) -> (u32, BootData)
 }
 
 fn toggle_bank(bank: u8) -> u8 {
-    if bank == 0 {
-        1
-    } else {
-        0
-    }
+    bank ^ 1
 }
 
 fn bank_addresses(bd: &BootData, layout: &MemoryLayout) -> (u32, u32) {
@@ -174,13 +171,6 @@ fn bank_addresses(bd: &BootData, layout: &MemoryLayout) -> (u32, u32) {
     }
 }
 
-fn bank_metadata(bd: &BootData, bank: u8) -> (u32, u32) {
-    if bank == 0 {
-        (bd.crc_a, bd.size_a)
-    } else {
-        (bd.crc_b, bd.size_b)
-    }
-}
 
 /// # Safety
 /// Caller must ensure `flash_addr` and `layout` are valid.

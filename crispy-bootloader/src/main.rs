@@ -56,9 +56,6 @@ fn main() -> ! {
 
     let mut p = init_hardware();
 
-    // Initialize command queue for USB<->Update communication
-    services::usb::init_command_queue();
-
     let event_bus = EventBus::new();
 
     let services = [

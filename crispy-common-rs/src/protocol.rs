@@ -117,6 +117,39 @@ impl BootData {
         }
     }
 
+    /// Returns `(size, crc, version)` for the given bank, or `None` if bank is invalid.
+    pub fn firmware_info(&self, bank: u8) -> Option<(u32, u32, u32)> {
+        match bank {
+            0 => Some((self.size_a, self.crc_a, self.version_a)),
+            1 => Some((self.size_b, self.crc_b, self.version_b)),
+            _ => None,
+        }
+    }
+
+    /// Set `(size, crc, version)` for the given bank. Does nothing if bank > 1.
+    pub fn set_firmware_info(&mut self, bank: u8, size: u32, crc: u32, version: u32) {
+        match bank {
+            0 => {
+                self.size_a = size;
+                self.crc_a = crc;
+                self.version_a = version;
+            }
+            1 => {
+                self.size_b = size;
+                self.crc_b = crc;
+                self.version_b = version;
+            }
+            _ => {}
+        }
+    }
+
+    /// Mark a bank as active and reset confirmation state.
+    pub fn activate_bank(&mut self, bank: u8) {
+        self.active_bank = bank;
+        self.confirmed = 0;
+        self.boot_attempts = 0;
+    }
+
     /// Read BootData from a raw address via volatile reads.
     ///
     /// # Safety
@@ -133,6 +166,15 @@ impl BootData {
                 core::mem::size_of::<Self>(),
             )
         }
+    }
+}
+
+/// Returns the flash address for a bank, or `None` if bank is invalid.
+pub fn bank_addr_for(bank: u8) -> Option<u32> {
+    match bank {
+        0 => Some(FW_A_ADDR),
+        1 => Some(FW_B_ADDR),
+        _ => None,
     }
 }
 

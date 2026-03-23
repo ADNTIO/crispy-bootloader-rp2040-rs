@@ -10,7 +10,7 @@
 
 use crate::protocol::{
     BootData, BOOT_DATA_ADDR, FLASH_BASE, FLASH_PAGE_SIZE, FLASH_SECTOR_SIZE, FW_A_ADDR,
-    FW_BANK_SIZE, FW_B_ADDR, RAM_UPDATE_FLAG_ADDR, RAM_UPDATE_MAGIC,
+    FW_BANK_SIZE, RAM_UPDATE_FLAG_ADDR, RAM_UPDATE_MAGIC,
 };
 
 /// Read BootData from flash.
@@ -74,9 +74,7 @@ pub fn set_active_bank(bank: u8) -> bool {
         bd = BootData::default_new();
     }
 
-    bd.active_bank = bank;
-    bd.confirmed = 0;
-    bd.boot_attempts = 0;
+    bd.activate_bank(bank);
 
     unsafe {
         write_boot_data(&bd);
@@ -87,11 +85,7 @@ pub fn set_active_bank(bank: u8) -> bool {
 
 /// Get the flash address for a bank.
 pub fn bank_address(bank: u8) -> u32 {
-    if bank == 0 {
-        FW_A_ADDR
-    } else {
-        FW_B_ADDR
-    }
+    crate::protocol::bank_addr_for(bank).unwrap_or(FW_A_ADDR)
 }
 
 /// Get the inactive bank (opposite of current active bank).
@@ -175,15 +169,7 @@ pub fn update_bank_metadata(bank: u8, size: u32, crc: u32, version: u32) {
         bd = BootData::default_new();
     }
 
-    if bank == 0 {
-        bd.size_a = size;
-        bd.crc_a = crc;
-        bd.version_a = version;
-    } else {
-        bd.size_b = size;
-        bd.crc_b = crc;
-        bd.version_b = version;
-    }
+    bd.set_firmware_info(bank, size, crc, version);
 
     unsafe {
         write_boot_data(&bd);
@@ -233,23 +219,18 @@ pub fn reboot() -> ! {
 
 unsafe fn flash_erase_and_program(offset: u32, data: &[u8]) {
     cortex_m::interrupt::disable();
-
     rp2040_hal::rom_data::connect_internal_flash();
     rp2040_hal::rom_data::flash_exit_xip();
+
     rp2040_hal::rom_data::flash_range_erase(
         offset,
         FLASH_SECTOR_SIZE as usize,
         FLASH_SECTOR_SIZE,
         0x20,
     );
-    rp2040_hal::rom_data::flash_flush_cache();
-    rp2040_hal::rom_data::flash_enter_cmd_xip();
-
-    rp2040_hal::rom_data::connect_internal_flash();
-    rp2040_hal::rom_data::flash_exit_xip();
     rp2040_hal::rom_data::flash_range_program(offset, data.as_ptr(), data.len());
+
     rp2040_hal::rom_data::flash_flush_cache();
     rp2040_hal::rom_data::flash_enter_cmd_xip();
-
     cortex_m::interrupt::enable();
 }

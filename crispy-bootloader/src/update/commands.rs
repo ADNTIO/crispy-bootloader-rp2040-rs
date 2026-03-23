@@ -5,26 +5,10 @@ use super::{state::UpdateState, storage};
 use crate::flash;
 use crate::usb_transport::UsbTransport;
 use crispy_common::protocol::{
-    parse_semver, AckStatus, BootData, Command, Response, FW_A_ADDR, FW_BANK_SIZE, FW_B_ADDR,
+    bank_addr_for, parse_semver, AckStatus, BootData, Command, Response, FW_BANK_SIZE,
 };
 
 const BOOTLOADER_VERSION: &str = env!("CRISPY_VERSION");
-
-fn bank_addr(bank: u8) -> Option<u32> {
-    match bank {
-        0 => Some(FW_A_ADDR),
-        1 => Some(FW_B_ADDR),
-        _ => None,
-    }
-}
-
-fn bank_firmware_info(bd: &BootData, bank: u8) -> Option<(u32, u32)> {
-    match bank {
-        0 => Some((bd.size_a, bd.crc_a)),
-        1 => Some((bd.size_b, bd.crc_b)),
-        _ => None,
-    }
-}
 
 fn send_ack(transport: &mut UsbTransport, status: AckStatus) {
     let _ = transport.send(&Response::Ack(status));
@@ -86,7 +70,7 @@ fn handle_start_update(
     }
 
     let max_buffer_size = storage::fw_ram_buffer_size();
-    let Some(bank_addr) = bank_addr(bank) else {
+    let Some(bank_addr) = bank_addr_for(bank) else {
         return reject_with(transport, AckStatus::BankInvalid, state);
     };
 
@@ -223,19 +207,8 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
     }
 
     let mut bd = flash::read_boot_data();
-    bd.active_bank = bank;
-    bd.confirmed = 0;
-    bd.boot_attempts = 0;
-
-    if bank == 0 {
-        bd.version_a = version;
-        bd.crc_a = expected_crc;
-        bd.size_a = expected_size;
-    } else {
-        bd.version_b = version;
-        bd.crc_b = expected_crc;
-        bd.size_b = expected_size;
-    }
+    bd.activate_bank(bank);
+    bd.set_firmware_info(bank, expected_size, expected_crc, version);
 
     unsafe {
         flash::write_boot_data(&bd);
@@ -262,12 +235,12 @@ fn handle_set_active_bank(
         return reject_with(transport, AckStatus::BadState, state);
     }
 
-    let Some(bank_addr) = bank_addr(bank) else {
+    let Some(bank_addr) = bank_addr_for(bank) else {
         return reject_with(transport, AckStatus::BankInvalid, state);
     };
 
     let mut bd = flash::read_boot_data();
-    let Some((size, crc)) = bank_firmware_info(&bd, bank) else {
+    let Some((size, crc, _)) = bd.firmware_info(bank) else {
         return reject_with(transport, AckStatus::BankInvalid, state);
     };
 
@@ -287,9 +260,7 @@ fn handle_set_active_bank(
         return reject_with(transport, AckStatus::CrcError, state);
     }
 
-    bd.active_bank = bank;
-    bd.confirmed = 0;
-    bd.boot_attempts = 0;
+    bd.activate_bank(bank);
 
     unsafe {
         flash::write_boot_data(&bd);
