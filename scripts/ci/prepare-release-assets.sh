@@ -72,5 +72,11 @@ copy_required crispy-upload     "$OUTDIR/crispy-upload-linux-x64" -type f
 copy_required crispy-upload.exe "$OUTDIR/crispy-upload-windows-x64.exe"
 chmod +x "$OUTDIR/crispy-upload-linux-x64"
 
+# SBOMs (CycloneDX, optional — only present when sbom job ran)
+while IFS= read -r sbom; do
+    [[ -n "$sbom" ]] || continue
+    cp "$sbom" "$OUTDIR/"
+done < <(find . -name '*.cdx.json' ! -path './.git/*' ! -path '*/.venv/*' 2>/dev/null)
+
 echo "Release assets ready in $OUTDIR/"
 ls -1 "$OUTDIR/"

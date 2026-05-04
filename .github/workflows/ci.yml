@@ -96,9 +96,43 @@ jobs:
             target/release/crispy-upload
             target/x86_64-pc-windows-gnu/release/crispy-upload.exe
 
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: printf '%s' "${GITHUB_REF_NAME#v}" > VERSION
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv6m-none-eabi
+
+      - uses: astral-sh/setup-uv@v3
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install SBOM tools
+        run: |
+          cargo install cargo-cyclonedx --locked
+          pip install cyclonedx-bom
+
+      - name: Generate SBOMs
+        run: make sbom SBOM_OUT=sbom
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom/*.cdx.json
+
   release:
     name: Create Release
-    needs: [check, test, build]
+    needs: [check, test, build, sbom]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

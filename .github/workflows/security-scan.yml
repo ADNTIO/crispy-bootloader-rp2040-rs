@@ -1,0 +1,251 @@
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '**/pyproject.toml'
+      - '**/uv.lock'
+      - '.github/workflows/security-scan.yml'
+  push:
+    branches: [main, develop]
+  schedule:
+    # Weekly scan to catch newly disclosed advisories (Mondays 06:00 UTC)
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+
+jobs:
+  sbom:
+    name: 1. Generate SBOMs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: astral-sh/setup-uv@v3
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install SBOM tools
+        run: |
+          cargo install cargo-cyclonedx --locked
+          pip install cyclonedx-bom
+
+      - name: Generate SBOMs
+        run: make sbom SBOM_OUT=sbom
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-scan
+          path: sbom/*.cdx.json
+          retention-days: 7
+
+  grype:
+    name: 2a. Grype scan (HIGH+)
+    needs: sbom
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sbom-scan
+          path: sbom
+
+      - name: Install grype
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
+            | sh -s -- -b /usr/local/bin
+
+      - name: Scan SBOMs with grype
+        id: scan
+        run: |
+          set +e
+          mkdir -p reports
+          fail=0
+          {
+            echo "## Grype scan results"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          for sbom in sbom/*.cdx.json; do
+            name=$(basename "$sbom" .cdx.json)
+            echo "==> Grype: $name"
+            grype "sbom:$sbom" \
+              --fail-on high \
+              -o sarif=reports/grype-$name.sarif \
+              -o table | tee reports/grype-$name.txt
+            rc=$?
+            {
+              echo "### $name"
+              echo '```'
+              cat reports/grype-$name.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            [[ $rc -ne 0 ]] && fail=1
+          done
+          exit $fail
+
+      - name: Upload Grype SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports
+          category: grype
+
+      - name: Upload Grype reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grype-reports
+          path: reports/
+
+  trivy:
+    name: 2b. Trivy scan (HIGH+)
+    needs: sbom
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sbom-scan
+          path: sbom
+
+      - name: Install trivy
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sudo sh -s -- -b /usr/local/bin
+
+      - name: Scan SBOMs with trivy
+        run: |
+          set +e
+          mkdir -p reports
+          fail=0
+          {
+            echo "## Trivy scan results"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          for sbom in sbom/*.cdx.json; do
+            name=$(basename "$sbom" .cdx.json)
+            echo "==> Trivy: $name"
+            trivy sbom "$sbom" \
+              --severity HIGH,CRITICAL \
+              --exit-code 1 \
+              --format sarif \
+              --output reports/trivy-$name.sarif
+            rc=$?
+            trivy sbom "$sbom" \
+              --severity HIGH,CRITICAL \
+              --format table \
+              --output reports/trivy-$name.txt > /dev/null 2>&1
+            {
+              echo "### $name"
+              echo '```'
+              cat reports/trivy-$name.txt 2>/dev/null || echo "(no output)"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            [[ $rc -ne 0 ]] && fail=1
+          done
+          exit $fail
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports
+          category: trivy
+
+      - name: Upload Trivy reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports
+          path: reports/
+
+  # Step 3+4: risk evaluation = HIGH threshold above already gates the PR.
+  # On scheduled/main runs, also open a tracking issue so vulnerabilities
+  # don't go unnoticed when there's no PR to fail.
+  notify:
+    name: 3. Open issue on failure
+    needs: [grype, trivy]
+    if: |
+      failure() &&
+      (github.event_name == 'schedule' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-reports'
+          merge-multiple: true
+          path: reports
+
+      - name: Create or update tracking issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const date = new Date().toISOString().split('T')[0];
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            let details = '';
+            try {
+              for (const f of fs.readdirSync('reports').sort()) {
+                if (!f.endsWith('.txt')) continue;
+                const content = fs.readFileSync(path.join('reports', f), 'utf8');
+                if (content.trim()) {
+                  details += `\n### ${f}\n\n\`\`\`\n${content.slice(0, 4000)}\n\`\`\`\n`;
+                }
+              }
+            } catch (e) {
+              details = '\n_Could not read scan reports — see workflow artifacts._\n';
+            }
+
+            const trigger = context.eventName === 'schedule'
+              ? 'Weekly scheduled scan'
+              : `Push to ${context.ref}`;
+
+            const body = [
+              `**${trigger}** detected vulnerabilities at HIGH or CRITICAL severity.`,
+              ``,
+              `- Run: ${runUrl}`,
+              `- Commit: \`${context.sha.slice(0, 7)}\``,
+              `- Date: ${date}`,
+              ``,
+              `Review findings in the [Security tab](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/security/code-scanning) (Grype + Trivy SARIF uploaded).`,
+              details,
+            ].join('\n');
+
+            // Look for an existing open issue to update instead of spamming.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'security,automated',
+              state: 'open',
+              per_page: 1,
+            });
+
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Security: vulnerabilities detected (${date})`,
+                body,
+                labels: ['security', 'automated'],
+              });
+            }

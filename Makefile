@@ -10,7 +10,7 @@ ifdef VERSION
 $(shell printf '$(VERSION)' > VERSION)
 endif
 
-.PHONY: help all embedded host bootloader firmware firmware-cpp upload upload-windows clean lint clippy lint-python lint-md test-unit test-integration test-ci-scripts
+.PHONY: help all embedded host bootloader firmware firmware-cpp upload upload-windows clean lint clippy lint-python lint-md test-unit test-integration test-ci-scripts sbom sbom-rust sbom-python scan scan-grype scan-trivy
 .PHONY: bootloader-bin firmware-bin firmware-cpp-bin bootloader-uf2
 .PHONY: flash-bootloader run-bootloader
 .PHONY: install-probe-rs install-tools update-mode reset
@@ -44,6 +44,12 @@ help:
 	@echo "  test-unit        Run all unit tests (Rust + Python)"
 	@echo "  test-integration Run all integration tests (needs SWD + board)"
 	@echo "  test-ci-scripts  Run CI script tests (no hardware)"
+	@echo "  sbom             Generate CycloneDX SBOMs for Rust + Python (SBOM_OUT=dir)"
+	@echo "  sbom-rust        Generate CycloneDX SBOMs for Rust binaries"
+	@echo "  sbom-python      Generate CycloneDX SBOMs for Python projects"
+	@echo "  scan             Run security scan on SBOMs (grype + trivy, fail on HIGH+)"
+	@echo "  scan-grype       Scan SBOMs with grype"
+	@echo "  scan-trivy       Scan SBOMs with trivy"
 	@echo ""
 	@echo "Setup:"
 	@echo "  install-tools    Install cargo-binutils (rust-objcopy)"
@@ -130,6 +136,66 @@ test-integration:
 # CI script tests
 test-ci-scripts:
 	./scripts/ci/test-prepare-release-assets.sh
+
+# Python projects (used by SBOM + scan targets)
+PYTHON_PROJECTS := crispy-common-python crispy-upload-python tests/integration
+
+# SBOM generation (CycloneDX format, published with release binaries)
+SBOM_OUT ?= sbom
+RUST_SBOM_PACKAGES := crispy-bootloader crispy-fw-sample-rs crispy-upload-rs
+
+sbom: sbom-rust sbom-python
+
+sbom-rust:
+	@command -v cargo-cyclonedx >/dev/null 2>&1 || cargo install cargo-cyclonedx --locked
+	@mkdir -p $(SBOM_OUT)
+	@for pkg in $(RUST_SBOM_PACKAGES); do \
+		echo "==> cargo-cyclonedx: $$pkg"; \
+		cargo cyclonedx -p $$pkg --format json --override-filename $$pkg.cdx; \
+		find . -name "$$pkg.cdx.json" -not -path "./$(SBOM_OUT)/*" -exec mv {} $(SBOM_OUT)/ \; ; \
+	done
+
+sbom-python:
+	@command -v cyclonedx-py >/dev/null 2>&1 || pip install --user cyclonedx-bom
+	@mkdir -p $(SBOM_OUT)
+	@for project in $(PYTHON_PROJECTS); do \
+		name=$$(basename $$project); \
+		echo "==> cyclonedx-py: $$project -> $(SBOM_OUT)/$$name.cdx.json"; \
+		(cd $$project && uv export --format requirements-txt --no-hashes --no-emit-project > .sbom-requirements.txt) && \
+		cyclonedx-py requirements $$project/.sbom-requirements.txt -o $(SBOM_OUT)/$$name.cdx.json --output-format JSON; \
+		rm -f $$project/.sbom-requirements.txt; \
+	done
+
+# Security scan: run grype + trivy on the generated SBOMs.
+# Threshold matches CI (HIGH or higher fails).
+SCAN_REPORTS ?= $(SBOM_OUT)/reports
+
+scan: scan-grype scan-trivy
+
+scan-grype: sbom
+	@command -v grype >/dev/null 2>&1 || { \
+		echo "Installing grype..."; \
+		curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b $$HOME/.local/bin; \
+	}
+	@mkdir -p $(SCAN_REPORTS)
+	@fail=0; for sbom in $(SBOM_OUT)/*.cdx.json; do \
+		name=$$(basename $$sbom .cdx.json); \
+		echo "==> grype: $$name"; \
+		grype "sbom:$$sbom" --fail-on high -o table | tee $(SCAN_REPORTS)/grype-$$name.txt || fail=1; \
+	done; exit $$fail
+
+scan-trivy: sbom
+	@command -v trivy >/dev/null 2>&1 || { \
+		echo "Installing trivy..."; \
+		curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin; \
+	}
+	@mkdir -p $(SCAN_REPORTS)
+	@fail=0; for sbom in $(SBOM_OUT)/*.cdx.json; do \
+		name=$$(basename $$sbom .cdx.json); \
+		echo "==> trivy: $$name"; \
+		trivy sbom $$sbom --severity HIGH,CRITICAL --exit-code 1 --format table \
+			| tee $(SCAN_REPORTS)/trivy-$$name.txt || fail=1; \
+	done; exit $$fail
 
 # Clean
 clean:
