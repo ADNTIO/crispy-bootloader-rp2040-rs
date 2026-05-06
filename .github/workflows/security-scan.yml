@@ -107,6 +107,19 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
 
+      # Grype emits empty `artifactLocation.uri` when the SBOM has no source
+      # path (typical for Python SBOMs from cyclonedx-py). CodeQL rejects
+      # those, so we point them at the SBOM filename.
+      - name: Patch empty SARIF locations
+        if: always()
+        run: |
+          f=reports/grype-${{ matrix.sbom }}.sarif
+          [ -f "$f" ] || exit 0
+          jq --arg uri "${{ matrix.sbom }}.cdx.json" \
+            '(.. | objects | select(has("artifactLocation")).artifactLocation.uri) |=
+             (if (. // "") == "" then $uri else . end)' "$f" > "$f.tmp"
+          mv "$f.tmp" "$f"
+
       - name: Upload Grype SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3
