@@ -15,7 +15,7 @@ jobs:
     name: Format + Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -45,7 +45,7 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -62,7 +62,7 @@ jobs:
     name: Build All
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -103,7 +103,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -141,7 +141,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Set version from tag
         run: printf '%s' "${GITHUB_REF_NAME#v}" > VERSION
