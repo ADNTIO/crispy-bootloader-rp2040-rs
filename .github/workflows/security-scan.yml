@@ -37,6 +37,8 @@ jobs:
   sbom:
     name: 1. Generate SBOMs
     runs-on: ubuntu-latest
+    outputs:
+      sboms: ${{ steps.list.outputs.sboms }}
     steps:
       - uses: actions/checkout@v4
 
@@ -56,6 +58,12 @@ jobs:
       - name: Generate SBOMs
         run: make sbom SBOM_OUT=sbom
 
+      - id: list
+        name: List SBOM names
+        run: |
+          names=$(ls sbom/*.cdx.json | xargs -n1 basename | sed 's/\.cdx\.json$//' | jq -R . | jq -sc .)
+          echo "sboms=$names" >> "$GITHUB_OUTPUT"
+
       - name: Upload SBOM artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -64,9 +72,13 @@ jobs:
           retention-days: 7
 
   grype:
-    name: 2a. Grype scan (HIGH+)
+    name: 2a. Grype (${{ matrix.sbom }})
     needs: sbom
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sbom: ${{ fromJSON(needs.sbom.outputs.sboms) }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -78,52 +90,45 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh \
             | sh -s -- -b /usr/local/bin
 
-      - name: Scan SBOMs with grype
-        id: scan
+      - name: Scan SBOM with grype
         run: |
-          set +e
           mkdir -p reports
-          fail=0
+          set +e
+          grype "sbom:sbom/${{ matrix.sbom }}.cdx.json" \
+            --fail-on high \
+            -o sarif=reports/grype-${{ matrix.sbom }}.sarif \
+            -o table | tee reports/grype-${{ matrix.sbom }}.txt
+          rc=$?
           {
-            echo "## Grype scan results"
-            echo ""
+            echo "## Grype: ${{ matrix.sbom }}"
+            echo '```'
+            cat reports/grype-${{ matrix.sbom }}.txt
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          for sbom in sbom/*.cdx.json; do
-            name=$(basename "$sbom" .cdx.json)
-            echo "==> Grype: $name"
-            grype "sbom:$sbom" \
-              --fail-on high \
-              -o sarif=reports/grype-$name.sarif \
-              -o table | tee reports/grype-$name.txt
-            rc=$?
-            {
-              echo "### $name"
-              echo '```'
-              cat reports/grype-$name.txt
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            [[ $rc -ne 0 ]] && fail=1
-          done
-          exit $fail
+          exit $rc
 
       - name: Upload Grype SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: reports
-          category: grype
+          sarif_file: reports/grype-${{ matrix.sbom }}.sarif
+          category: grype-${{ matrix.sbom }}
 
-      - name: Upload Grype reports
+      - name: Upload Grype report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: grype-reports
+          name: grype-reports-${{ matrix.sbom }}
           path: reports/
 
   trivy:
-    name: 2b. Trivy scan (HIGH+)
+    name: 2b. Trivy (${{ matrix.sbom }})
     needs: sbom
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sbom: ${{ fromJSON(needs.sbom.outputs.sboms) }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -135,50 +140,40 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
             | sudo sh -s -- -b /usr/local/bin
 
-      - name: Scan SBOMs with trivy
+      - name: Scan SBOM with trivy
         run: |
-          set +e
           mkdir -p reports
-          fail=0
+          set +e
+          trivy sbom "sbom/${{ matrix.sbom }}.cdx.json" \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format sarif \
+            --output reports/trivy-${{ matrix.sbom }}.sarif
+          rc=$?
+          trivy sbom "sbom/${{ matrix.sbom }}.cdx.json" \
+            --severity HIGH,CRITICAL \
+            --format table \
+            --output reports/trivy-${{ matrix.sbom }}.txt > /dev/null 2>&1
           {
-            echo "## Trivy scan results"
-            echo ""
+            echo "## Trivy: ${{ matrix.sbom }}"
+            echo '```'
+            cat reports/trivy-${{ matrix.sbom }}.txt 2>/dev/null || echo "(no output)"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          for sbom in sbom/*.cdx.json; do
-            name=$(basename "$sbom" .cdx.json)
-            echo "==> Trivy: $name"
-            trivy sbom "$sbom" \
-              --severity HIGH,CRITICAL \
-              --exit-code 1 \
-              --format sarif \
-              --output reports/trivy-$name.sarif
-            rc=$?
-            trivy sbom "$sbom" \
-              --severity HIGH,CRITICAL \
-              --format table \
-              --output reports/trivy-$name.txt > /dev/null 2>&1
-            {
-              echo "### $name"
-              echo '```'
-              cat reports/trivy-$name.txt 2>/dev/null || echo "(no output)"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            [[ $rc -ne 0 ]] && fail=1
-          done
-          exit $fail
+          exit $rc
 
       - name: Upload Trivy SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: reports
-          category: trivy
+          sarif_file: reports/trivy-${{ matrix.sbom }}.sarif
+          category: trivy-${{ matrix.sbom }}
 
-      - name: Upload Trivy reports
+      - name: Upload Trivy report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-reports
+          name: trivy-reports-${{ matrix.sbom }}
           path: reports/
 
   # Step 3+4: risk evaluation = HIGH threshold above already gates the PR.
@@ -194,7 +189,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: '*-reports'
+          pattern: '*-reports-*'
           merge-multiple: true
           path: reports
 

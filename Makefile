@@ -149,11 +149,12 @@ sbom: sbom-rust sbom-python
 sbom-rust:
 	@command -v cargo-cyclonedx >/dev/null 2>&1 || cargo install cargo-cyclonedx --locked
 	@mkdir -p $(SBOM_OUT)
+	@echo "==> cargo-cyclonedx (workspace, all targets)"
+	cargo cyclonedx --format json --target all --quiet
 	@for pkg in $(RUST_SBOM_PACKAGES); do \
-		echo "==> cargo-cyclonedx: $$pkg"; \
-		cargo cyclonedx -p $$pkg --format json --override-filename $$pkg.cdx; \
-		find . -name "$$pkg.cdx.json" -not -path "./$(SBOM_OUT)/*" -exec mv {} $(SBOM_OUT)/ \; ; \
+		mv $$pkg/$$pkg.cdx.json $(SBOM_OUT)/$$pkg.cdx.json; \
 	done
+	@find . -maxdepth 2 -name "*.cdx.json" -not -path "./$(SBOM_OUT)/*" -delete
 
 sbom-python:
 	@command -v cyclonedx-py >/dev/null 2>&1 || pip install --user cyclonedx-bom
