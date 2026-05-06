@@ -20,8 +20,20 @@ permissions:
   contents: read
   security-events: write
   issues: write
+  pull-requests: write
 
 jobs:
+  dependency-review:
+    name: 0. Dependency review (PR diff, HIGH+)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
   sbom:
     name: 1. Generate SBOMs
     runs-on: ubuntu-latest
