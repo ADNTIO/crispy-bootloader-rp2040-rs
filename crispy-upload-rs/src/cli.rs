@@ -54,6 +54,23 @@ pub enum Commands {
             default_value = "1"
         )]
         version: u32,
+
+        /// Ed25519 private key (32-byte seed) used to sign the firmware.
+        /// If omitted, the firmware is sent unsigned (only accepted by
+        /// `allow-unsigned` bootloader builds).
+        #[arg(short = 'k', long = "key", value_name = "PRIVATE_KEY")]
+        key: Option<PathBuf>,
+    },
+
+    /// Generate an Ed25519 signing key pair
+    Keygen {
+        /// Directory to write `private_key.bin` and `public_key.bin` into
+        #[arg(long = "out-dir", default_value = "keys")]
+        out_dir: PathBuf,
+
+        /// Overwrite existing key files if present
+        #[arg(short, long)]
+        force: bool,
     },
 
     /// Set the active bank for the next boot (without uploading new firmware)
@@ -102,12 +119,15 @@ fn parse_hex_u32(s: &str) -> Result<u32, String> {
 /// Execute the parsed CLI command.
 pub fn run(cli: Cli) -> Result<()> {
     match cli.command {
+        // Commands that do not need a serial port.
         Commands::Bin2Uf2 {
             input,
             output,
             base_address,
             family_id,
         } => commands::bin2uf2(&input, &output, base_address, family_id),
+
+        Commands::Keygen { out_dir, force } => commands::keygen(&out_dir, force),
 
         cmd => {
             let port = cli
@@ -122,11 +142,12 @@ pub fn run(cli: Cli) -> Result<()> {
                     file,
                     bank,
                     version,
-                } => commands::upload(&mut transport, &file, bank, version),
+                    key,
+                } => commands::upload(&mut transport, &file, bank, version, key.as_deref()),
                 Commands::SetBank { bank } => commands::set_bank(&mut transport, bank),
                 Commands::Wipe => commands::wipe(&mut transport),
                 Commands::Reboot => commands::reboot(&mut transport),
-                Commands::Bin2Uf2 { .. } => bail!("unreachable"),
+                Commands::Bin2Uf2 { .. } | Commands::Keygen { .. } => bail!("unreachable"),
             }
         }
     }

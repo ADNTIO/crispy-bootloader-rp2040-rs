@@ -18,10 +18,15 @@ default = []
 std = ["serde/std"]
 embedded = ["rp2040-hal", "embedded-hal", "cortex-m"]
 defmt = ["dep:defmt"]
+# Ed25519 firmware signing (host) and verification (device).
+crypto = ["dep:ed25519-dalek"]
 
 [dependencies]
 serde = { version = "1", default-features = false, features = ["derive"] }
 heapless = { version = "0.8", features = ["serde"] }
+
+# Ed25519 signature support (no_std on device, signing helpers under `std`).
+ed25519-dalek = { version = "2", default-features = false, optional = true }
 
 # Optional embedded dependencies
 rp2040-hal = { version = "0.11", features = ["rt", "critical-section-impl"], optional = true }

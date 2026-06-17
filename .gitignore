@@ -69,3 +69,8 @@ __pycache__/
 
 # C++ firmware build
 crispy-fw-sample-cpp/build/
+
+# Firmware signing keys (never commit real keys)
+keys/private_key.bin
+keys/public_key.bin
+keys/*.pem

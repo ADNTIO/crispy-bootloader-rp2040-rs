@@ -25,16 +25,16 @@ Bootloader A/B en Rust `no_std` qui :
 
 Composants :
 
-| Crate / dossier | Rôle | Spécifique RP2040 ? |
-|---|---|---|
-| `crispy-bootloader` | Bootloader (binaire embarqué) | **Oui, fortement** |
-| `crispy-common-rs` | Protocole + utilitaires flash partagés | Partiellement (feature `embedded`) |
-| `crispy-fw-sample-rs` | Firmware d'exemple (Rust, exécution RAM) | **Oui** |
-| `crispy-fw-sample-cpp` | Firmware d'exemple (Pico SDK C++) | **Oui** |
-| `crispy-sdk-cpp` | SDK C++ (boot_data, commandes, linker) | **Oui** |
-| `crispy-upload-rs` | CLI hôte (upload/status/bank/bin2uf2) | Non (std) — sauf family-id UF2 |
-| `crispy-upload-python` / `crispy-common-python` | CLI + protocole Python | Non |
-| `linker_scripts/` | `bootloader_rp2040.x`, `fw_rp2040.x` | **Oui** |
+| Crate / dossier                                 | Rôle                                     | Spécifique RP2040 ?                |
+| ----------------------------------------------- | ---------------------------------------- | ---------------------------------- |
+| `crispy-bootloader`                             | Bootloader (binaire embarqué)            | **Oui, fortement**                 |
+| `crispy-common-rs`                              | Protocole + utilitaires flash partagés   | Partiellement (feature `embedded`) |
+| `crispy-fw-sample-rs`                           | Firmware d'exemple (Rust, exécution RAM) | **Oui**                            |
+| `crispy-fw-sample-cpp`                          | Firmware d'exemple (Pico SDK C++)        | **Oui**                            |
+| `crispy-sdk-cpp`                                | SDK C++ (boot_data, commandes, linker)   | **Oui**                            |
+| `crispy-upload-rs`                              | CLI hôte (upload/status/bank/bin2uf2)    | Non (std) — sauf family-id UF2     |
+| `crispy-upload-python` / `crispy-common-python` | CLI + protocole Python                   | Non                                |
+| `linker_scripts/`                               | `bootloader_rp2040.x`, `fw_rp2040.x`     | **Oui**                            |
 
 Le contrôle d'intégrité actuel repose **uniquement sur CRC32 (ISO-HDLC)** :
 c'est une protection contre la corruption, **pas** une protection
@@ -46,39 +46,39 @@ cryptographique (aucune authentification de l'origine ; trivial à forger).
 
 ### 2.1 Différences matérielles structurantes
 
-| Sujet | RP2040 | RP2350 | Impact |
-|---|---|---|---|
-| Cœurs | 2× Cortex-M0+ (Armv6-M) | 2× Cortex-M33 (Armv8-M) **ou** 2× Hazard3 (RISC-V) | Cible Rust, NVIC, sécurité |
-| Cible Rust | `thumbv6m-none-eabi` | `thumbv8m.main-none-eabihf` | toolchain, `.cargo/config` |
-| HAL rp-rs | `rp2040-hal` 0.11 | **`rp235x-hal`** | API peripherals/clocks/usb/flash |
-| 2e étage de boot | `boot2` 256 o (`rp2040-boot2`) | **Bloc IMAGE_DEF** (`.start_block`) validé par le bootrom | Linker + `main.rs` |
-| SRAM | 264 KB | **520 KB** | Linker (banque RAM, buffer upload plus grands) |
-| ROM bootrom | table à `0x14/0x18`, lookup maison | Table/ABI différentes (drapeaux Arm/RISC-V/Secure) | Réécriture de `flash.rs` |
-| NVIC | 32 lignes (1 registre) | jusqu'à ~52 lignes (plusieurs registres) | `prepare_for_firmware_handoff` |
-| Sécurité | aucune | **TrustZone-M (Secure/Non-secure), OTP, secure boot bootrom (ECDSA secp256k1)** | cf. §3 option B |
-| Accél. crypto | aucune | **bloc SHA-256 matériel** | accélère la signature (cf. §3) |
-| UF2 family-id | `0xe48bff56` | ARM-S `0xe48bff59` (RISC-V `…5a`, ARM-NS `…5b`) | `bin2uf2`, Makefile |
-| probe-rs chip | `RP2040` | `RP2350` | `.cargo/config`, Makefile |
+| Sujet            | RP2040                             | RP2350                                                                          | Impact                                         |
+| ---------------- | ---------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Cœurs            | 2× Cortex-M0+ (Armv6-M)            | 2× Cortex-M33 (Armv8-M) **ou** 2× Hazard3 (RISC-V)                              | Cible Rust, NVIC, sécurité                     |
+| Cible Rust       | `thumbv6m-none-eabi`               | `thumbv8m.main-none-eabihf`                                                     | toolchain, `.cargo/config`                     |
+| HAL rp-rs        | `rp2040-hal` 0.11                  | **`rp235x-hal`**                                                                | API peripherals/clocks/usb/flash               |
+| 2e étage de boot | `boot2` 256 o (`rp2040-boot2`)     | **Bloc IMAGE_DEF** (`.start_block`) validé par le bootrom                       | Linker + `main.rs`                             |
+| SRAM             | 264 KB                             | **520 KB**                                                                      | Linker (banque RAM, buffer upload plus grands) |
+| ROM bootrom      | table à `0x14/0x18`, lookup maison | Table/ABI différentes (drapeaux Arm/RISC-V/Secure)                              | Réécriture de `flash.rs`                       |
+| NVIC             | 32 lignes (1 registre)             | jusqu'à ~52 lignes (plusieurs registres)                                        | `prepare_for_firmware_handoff`                 |
+| Sécurité         | aucune                             | **TrustZone-M (Secure/Non-secure), OTP, secure boot bootrom (ECDSA secp256k1)** | cf. §3 option B                                |
+| Accél. crypto    | aucune                             | **bloc SHA-256 matériel**                                                       | accélère la signature (cf. §3)                 |
+| UF2 family-id    | `0xe48bff56`                       | ARM-S `0xe48bff59` (RISC-V `…5a`, ARM-NS `…5b`)                                 | `bin2uf2`, Makefile                            |
+| probe-rs chip    | `RP2040`                           | `RP2350`                                                                        | `.cargo/config`, Makefile                      |
 
 ### 2.2 Impact fichier par fichier
 
-| Fichier | Modif. nécessaire | Difficulté |
-|---|---|---|
-| `Cargo.toml` (workspace) + crates embarquées | `rp2040-hal`/`rp2040-boot2` → `rp235x-hal` ; retrait de `rp2040-boot2` | Faible |
-| `.cargo/config.toml` | cible `thumbv8m.main-none-eabihf`, `--chip RP2350` | Faible |
-| `Makefile` | `EMBEDDED_TARGET`, `CHIP`, family-id UF2, adresses | Faible |
-| `linker_scripts/bootloader_rp2040.x` → `…_rp2350.x` | Section `.start_block` (IMAGE_DEF) au lieu de `.boot2` ; refonte de la carte RAM (520 KB) ; recalcul des symboles `__fw_*` | **Élevée** (réglages + tests HW) |
-| `linker_scripts/fw_rp2040.x` → `…_rp2350.x` | Idem (firmware exécuté en RAM, plus de RAM dispo) | Moyenne |
-| `crispy-bootloader/src/main.rs` | Remplacer `static BOOT2` par `#[link_section=".start_block"] static IMAGE_DEF: ImageDef` | Faible |
-| `crispy-bootloader/src/peripherals.rs` | API `rp235x-hal` (clocks, `Timer0`, GPIO, `usb::UsbBus`) | Moyenne |
-| `crispy-bootloader/src/flash.rs` | **Réécriture du lookup ROM** : utiliser `rp235x_hal::rom_data` (connect/exit_xip/range_erase/range_program/flush/enter_cmd_xip). Le lookup maison `0x14/0x18` ne s'applique pas | **Élevée** |
-| `crispy-bootloader/src/boot.rs` | NVIC : effacer **toutes** les lignes M33 (boucle sur `icer/icpr`), pas un seul mot ; valider les plages RAM élargies ; handoff Armv8-M (VTOR OK) | Moyenne/Élevée |
-| `crispy-common-rs/src/flash.rs` | Mêmes appels ROM via `rp235x_hal::rom_data` ; tailles de banque | Moyenne |
-| `crispy-common-rs/src/protocol.rs` | Constantes mémoire (adresses banques, `RAM_UPDATE_FLAG_ADDR`, tailles) à recalculer | Faible |
-| `crispy-fw-sample-rs/*` | Port HAL identique au bootloader + IMAGE_DEF | Moyenne |
-| `crispy-sdk-cpp/*`, `crispy-fw-sample-cpp/*` | Pico SDK 2.x (RP2350), `pico_sdk_import`, `memmap_crispy.ld`, board `pico2` | Moyenne/Élevée |
-| `crispy-upload-rs/commands.rs` (`bin2uf2`) | family-id RP2350 par défaut/option | Faible |
-| `tests/integration/*`, docs (`memory-map.md`, etc.) | Cartes mémoire, procédures | Faible/Moyenne |
+| Fichier                                             | Modif. nécessaire                                                                                                                                                               | Difficulté                       |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `Cargo.toml` (workspace) + crates embarquées        | `rp2040-hal`/`rp2040-boot2` → `rp235x-hal` ; retrait de `rp2040-boot2`                                                                                                          | Faible                           |
+| `.cargo/config.toml`                                | cible `thumbv8m.main-none-eabihf`, `--chip RP2350`                                                                                                                              | Faible                           |
+| `Makefile`                                          | `EMBEDDED_TARGET`, `CHIP`, family-id UF2, adresses                                                                                                                              | Faible                           |
+| `linker_scripts/bootloader_rp2040.x` → `…_rp2350.x` | Section `.start_block` (IMAGE_DEF) au lieu de `.boot2` ; refonte de la carte RAM (520 KB) ; recalcul des symboles `__fw_*`                                                      | **Élevée** (réglages + tests HW) |
+| `linker_scripts/fw_rp2040.x` → `…_rp2350.x`         | Idem (firmware exécuté en RAM, plus de RAM dispo)                                                                                                                               | Moyenne                          |
+| `crispy-bootloader/src/main.rs`                     | Remplacer `static BOOT2` par `#[link_section=".start_block"] static IMAGE_DEF: ImageDef`                                                                                        | Faible                           |
+| `crispy-bootloader/src/peripherals.rs`              | API `rp235x-hal` (clocks, `Timer0`, GPIO, `usb::UsbBus`)                                                                                                                        | Moyenne                          |
+| `crispy-bootloader/src/flash.rs`                    | **Réécriture du lookup ROM** : utiliser `rp235x_hal::rom_data` (connect/exit_xip/range_erase/range_program/flush/enter_cmd_xip). Le lookup maison `0x14/0x18` ne s'applique pas | **Élevée**                       |
+| `crispy-bootloader/src/boot.rs`                     | NVIC : effacer **toutes** les lignes M33 (boucle sur `icer/icpr`), pas un seul mot ; valider les plages RAM élargies ; handoff Armv8-M (VTOR OK)                                | Moyenne/Élevée                   |
+| `crispy-common-rs/src/flash.rs`                     | Mêmes appels ROM via `rp235x_hal::rom_data` ; tailles de banque                                                                                                                 | Moyenne                          |
+| `crispy-common-rs/src/protocol.rs`                  | Constantes mémoire (adresses banques, `RAM_UPDATE_FLAG_ADDR`, tailles) à recalculer                                                                                             | Faible                           |
+| `crispy-fw-sample-rs/*`                             | Port HAL identique au bootloader + IMAGE_DEF                                                                                                                                    | Moyenne                          |
+| `crispy-sdk-cpp/*`, `crispy-fw-sample-cpp/*`        | Pico SDK 2.x (RP2350), `pico_sdk_import`, `memmap_crispy.ld`, board `pico2`                                                                                                     | Moyenne/Élevée                   |
+| `crispy-upload-rs/commands.rs` (`bin2uf2`)          | family-id RP2350 par défaut/option                                                                                                                                              | Faible                           |
+| `tests/integration/*`, docs (`memory-map.md`, etc.) | Cartes mémoire, procédures                                                                                                                                                      | Faible/Moyenne                   |
 
 ### 2.3 Points durs (là où passe le temps réel)
 
@@ -99,17 +99,17 @@ cryptographique (aucune authentification de l'origine ; trivial à forger).
 
 ### 2.4 Estimation portage RP2350
 
-| Lot | Charge (j·dev) |
-|---|---|
-| Dépendances, cibles, config, Makefile | 0,5–1 |
-| Bloc IMAGE_DEF + refonte linker (boot + fw) | 1,5–3 |
-| `flash.rs` (ROM) bootloader + common | 1,5–2,5 |
-| `boot.rs` handoff/NVIC/validation | 0,5–1 |
-| `peripherals.rs` + `fw-sample-rs` (HAL) | 1–1,5 |
-| SDK + sample C++ (Pico SDK 2.x) | 1–2 |
-| Outils hôte (family-id UF2) | 0,5 |
-| **Bring-up & tests d'intégration HW** | 2–4 |
-| **Total RP2350** | **~9–16 j·dev (2–3 semaines)** |
+| Lot                                         | Charge (j·dev)                 |
+| ------------------------------------------- | ------------------------------ |
+| Dépendances, cibles, config, Makefile       | 0,5–1                          |
+| Bloc IMAGE_DEF + refonte linker (boot + fw) | 1,5–3                          |
+| `flash.rs` (ROM) bootloader + common        | 1,5–2,5                        |
+| `boot.rs` handoff/NVIC/validation           | 0,5–1                          |
+| `peripherals.rs` + `fw-sample-rs` (HAL)     | 1–1,5                          |
+| SDK + sample C++ (Pico SDK 2.x)             | 1–2                            |
+| Outils hôte (family-id UF2)                 | 0,5                            |
+| **Bring-up & tests d'intégration HW**       | 2–4                            |
+| **Total RP2350**                            | **~9–16 j·dev (2–3 semaines)** |
 
 > Si la cible RISC-V (Hazard3) est aussi visée, ajouter ~3–5 j (2e toolchain
 > `riscv32imac`, 2e variante d'IMAGE_DEF, family-id). **Recommandation : se
@@ -172,32 +172,32 @@ confiance.
 
 ### 3.4 Impact fichier par fichier (Option A)
 
-| Fichier | Modif. | Difficulté |
-|---|---|---|
-| `crispy-common-rs/src/protocol.rs` | **`BootData` v2** : passer de 32 o à une structure versionnée incluant `sig` (64 o) + `hash`/longueur ; champ `version` de schéma. Le `const assert == 32` saute (le secteur de 4 KB laisse la place). Étendre `StartUpdate` ou ajouter `FinishUpdateSigned { signature }` | **Élevée** (compat ascendante) |
-| `crispy-bootloader/src/update.rs` | Vérifier la signature à `FinishUpdate` (sur le buffer RAM) avant commit ; stocker la signature | Moyenne |
-| `crispy-bootloader/src/boot.rs` | `validate_bank_*` : ajouter la **vérif. signature au boot** (hash flash + verify) ; rejeter si invalide | Moyenne/Élevée |
-| `crispy-bootloader` (nouveau module `crypto.rs` + clé publique) | Intégrer la crate de vérif. + clé publique embarquée | Moyenne |
-| `crispy-bootloader/Cargo.toml` / `common` | Ajouter `salty`/`ed25519-dalek`, `sha2`/`sha-512` no_std | Faible |
-| `crispy-upload-rs` (+ build) | Étape de **signature** côté hôte (charger clé privée, signer l'image) ; sous-commande `sign` / option `--key` ; envoi de la signature | Moyenne |
-| **Outillage de clés** (nouveau) | `keygen` (génère paire de clés), gestion sûre de la clé privée (fichier/CI/HSM) | Moyenne |
-| `crispy-upload-python` / `crispy-common-python` | Parité protocole (au moins lecture/format), idéalement signature | Moyenne |
-| `crispy-sdk-cpp` / `boot_data.*` | Parité `BootData` v2 (le firmware lit ces champs) | Moyenne |
-| Tests | **Tests négatifs** indispensables : firmware altéré / mauvaise clé ⇒ rejet, au boot et à l'upload | Moyenne/Élevée |
-| Docs (`protocol.md`, `boot-data.md`, `memory-map.md`, how-to signer) | Mise à jour | Moyenne |
+| Fichier                                                              | Modif.                                                                                                                                                                                                                                                                     | Difficulté                     |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `crispy-common-rs/src/protocol.rs`                                   | **`BootData` v2** : passer de 32 o à une structure versionnée incluant `sig` (64 o) + `hash`/longueur ; champ `version` de schéma. Le `const assert == 32` saute (le secteur de 4 KB laisse la place). Étendre `StartUpdate` ou ajouter `FinishUpdateSigned { signature }` | **Élevée** (compat ascendante) |
+| `crispy-bootloader/src/update.rs`                                    | Vérifier la signature à `FinishUpdate` (sur le buffer RAM) avant commit ; stocker la signature                                                                                                                                                                             | Moyenne                        |
+| `crispy-bootloader/src/boot.rs`                                      | `validate_bank_*` : ajouter la **vérif. signature au boot** (hash flash + verify) ; rejeter si invalide                                                                                                                                                                    | Moyenne/Élevée                 |
+| `crispy-bootloader` (nouveau module `crypto.rs` + clé publique)      | Intégrer la crate de vérif. + clé publique embarquée                                                                                                                                                                                                                       | Moyenne                        |
+| `crispy-bootloader/Cargo.toml` / `common`                            | Ajouter `salty`/`ed25519-dalek`, `sha2`/`sha-512` no_std                                                                                                                                                                                                                   | Faible                         |
+| `crispy-upload-rs` (+ build)                                         | Étape de **signature** côté hôte (charger clé privée, signer l'image) ; sous-commande `sign` / option `--key` ; envoi de la signature                                                                                                                                      | Moyenne                        |
+| **Outillage de clés** (nouveau)                                      | `keygen` (génère paire de clés), gestion sûre de la clé privée (fichier/CI/HSM)                                                                                                                                                                                            | Moyenne                        |
+| `crispy-upload-python` / `crispy-common-python`                      | Parité protocole (au moins lecture/format), idéalement signature                                                                                                                                                                                                           | Moyenne                        |
+| `crispy-sdk-cpp` / `boot_data.*`                                     | Parité `BootData` v2 (le firmware lit ces champs)                                                                                                                                                                                                                          | Moyenne                        |
+| Tests                                                                | **Tests négatifs** indispensables : firmware altéré / mauvaise clé ⇒ rejet, au boot et à l'upload                                                                                                                                                                          | Moyenne/Élevée                 |
+| Docs (`protocol.md`, `boot-data.md`, `memory-map.md`, how-to signer) | Mise à jour                                                                                                                                                                                                                                                                | Moyenne                        |
 
 ### 3.5 Estimation signature (Option A)
 
-| Lot | Charge (j·dev) |
-|---|---|
-| Choix algo + outillage clés (keygen, signature hôte) | 1,5–2,5 |
-| Extension protocole + `BootData` v2 + compat | 1,5–2 |
-| Vérif. bootloader (upload + boot) + module crypto | 2–3 |
-| Parité hôte (upload-rs) + Python | 1–2 |
-| Parité SDK C++ (lecture champs) | 0,5–1 |
-| Tests (unitaires + intégration + cas négatifs) | 2–3 |
-| Docs | 1 |
-| **Total signature** | **~9,5–14,5 j·dev (2–3 semaines)** |
+| Lot                                                  | Charge (j·dev)                     |
+| ---------------------------------------------------- | ---------------------------------- |
+| Choix algo + outillage clés (keygen, signature hôte) | 1,5–2,5                            |
+| Extension protocole + `BootData` v2 + compat         | 1,5–2                              |
+| Vérif. bootloader (upload + boot) + module crypto    | 2–3                                |
+| Parité hôte (upload-rs) + Python                     | 1–2                                |
+| Parité SDK C++ (lecture champs)                      | 0,5–1                              |
+| Tests (unitaires + intégration + cas négatifs)       | 2–3                                |
+| Docs                                                 | 1                                  |
+| **Total signature**                                  | **~9,5–14,5 j·dev (2–3 semaines)** |
 
 > Option B (secure boot OTP RP2350) : **+3–6 j** (étude OTP, scripts picotool de
 > signature de l'IMAGE_DEF, procédure de provisioning, tests irréversibles sur
@@ -207,13 +207,13 @@ confiance.
 
 ## 4. Charge totale et séquencement conseillé
 
-| Phase | Contenu | Charge |
-|---|---|---|
-| 0 | Cadrage : algo de signature, format `BootData` v2, gestion de la clé privée (cf. §5) | 0,5–1 j |
-| 1 | **Signature Option A sur la base RP2040 existante** (livrable testable tôt) | ~10–14 j |
-| 2 | **Portage RP2350** (ARM-S) | ~9–16 j |
-| 3 | Intégration signature ⇄ RP2350 (SHA-256 HW, vérif. au boot, perfs) | ~2–4 j |
-| 4 (option) | Secure boot OTP RP2350 (option B) | ~3–6 j |
+| Phase      | Contenu                                                                              | Charge   |
+| ---------- | ------------------------------------------------------------------------------------ | -------- |
+| 0          | Cadrage : algo de signature, format `BootData` v2, gestion de la clé privée (cf. §5) | 0,5–1 j  |
+| 1          | **Signature Option A sur la base RP2040 existante** (livrable testable tôt)          | ~10–14 j |
+| 2          | **Portage RP2350** (ARM-S)                                                           | ~9–16 j  |
+| 3          | Intégration signature ⇄ RP2350 (SHA-256 HW, vérif. au boot, perfs)                   | ~2–4 j   |
+| 4 (option) | Secure boot OTP RP2350 (option B)                                                    | ~3–6 j   |
 
 **Total (phases 1–3, un dev embarqué Rust expérimenté, hardware dispo) :
 ~4 à 6 semaines.** Le facteur de risque dominant est le **bring-up matériel**

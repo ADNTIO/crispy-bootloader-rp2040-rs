@@ -7,6 +7,7 @@
 #![no_main]
 
 mod boot;
+mod crypto;
 mod flash;
 mod peripherals;
 mod services;

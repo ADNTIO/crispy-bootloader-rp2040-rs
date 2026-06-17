@@ -15,6 +15,7 @@ This documentation follows the Diataxis model:
 
 - [Hardware test setup (Picoprobe + Pico target)](how-to/hardware-test-setup.md)
 - [Upload firmware](how-to/upload-firmware.md)
+- [Sign firmware (Ed25519)](how-to/sign-firmware.md)
 - [Run integration tests](how-to/run-integration-tests.md)
 - [Recover a device](how-to/recover-device.md)
 

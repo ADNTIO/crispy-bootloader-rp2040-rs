@@ -53,9 +53,11 @@ pub fn parse_semver(version: &str) -> Option<u32> {
 // --- Flash layout constants ---
 
 pub const FLASH_BASE: u32 = 0x1000_0000;
-pub const FW_A_ADDR: u32 = 0x1001_0000;
-pub const FW_B_ADDR: u32 = 0x100D_0000;
-pub const BOOT_DATA_ADDR: u32 = 0x1019_0000;
+// Bootloader occupies 128KB (0x20000) from FLASH_BASE to leave room for Ed25519
+// signature verification; firmware banks follow.
+pub const FW_A_ADDR: u32 = 0x1002_0000;
+pub const FW_B_ADDR: u32 = 0x100E_0000;
+pub const BOOT_DATA_ADDR: u32 = 0x101A_0000;
 
 pub const FW_BANK_SIZE: u32 = 768 * 1024; // 768KB per bank
 
@@ -141,6 +143,14 @@ impl BootData {
 /// Maximum data block size for firmware uploads.
 pub const MAX_DATA_BLOCK_SIZE: usize = 1024;
 
+/// Ed25519 public key length in bytes.
+pub const ED25519_PUBLIC_KEY_LEN: usize = 32;
+/// Ed25519 signature length in bytes.
+pub const ED25519_SIGNATURE_LEN: usize = 64;
+
+/// Ed25519 signature carried in the protocol (fixed 64 bytes).
+pub type SignatureBytes = heapless::Vec<u8, ED25519_SIGNATURE_LEN>;
+
 #[derive(Serialize, Deserialize, Debug)]
 #[allow(clippy::large_enum_variant)] // no_std, no allocator for Box
 pub enum Command {
@@ -169,6 +179,17 @@ pub enum Command {
     },
     /// Wipe all firmware banks and reset boot data.
     WipeAll,
+    /// Begin a firmware upload carrying an Ed25519 signature over the firmware
+    /// image. The bootloader verifies the signature against its embedded public
+    /// key at `FinishUpdate`. Appended after the legacy variants so the postcard
+    /// wire format of existing commands stays stable.
+    StartUpdateSigned {
+        bank: u8,
+        size: u32,
+        crc32: u32,
+        version: u32,
+        signature: SignatureBytes,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -192,6 +213,10 @@ pub enum AckStatus {
     BadCommand,
     BadState,
     BankInvalid,
+    /// The firmware signature did not verify against the embedded public key.
+    SignatureInvalid,
+    /// A signature is required (secure build) but the upload was unsigned.
+    SignatureRequired,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]

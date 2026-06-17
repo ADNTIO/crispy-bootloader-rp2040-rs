@@ -5,8 +5,9 @@
 
 use crispy_common::protocol::{
     pack_semver, parse_semver, unpack_semver, AckStatus, BootState, Command, Response,
-    BOOT_DATA_ADDR, FLASH_BASE, FLASH_PAGE_SIZE, FLASH_SECTOR_SIZE, FW_A_ADDR, FW_BANK_SIZE,
-    FW_B_ADDR, MAX_DATA_BLOCK_SIZE, RAM_UPDATE_FLAG_ADDR, RAM_UPDATE_MAGIC,
+    SignatureBytes, BOOT_DATA_ADDR, ED25519_PUBLIC_KEY_LEN, ED25519_SIGNATURE_LEN, FLASH_BASE,
+    FLASH_PAGE_SIZE, FLASH_SECTOR_SIZE, FW_A_ADDR, FW_BANK_SIZE, FW_B_ADDR, MAX_DATA_BLOCK_SIZE,
+    RAM_UPDATE_FLAG_ADDR, RAM_UPDATE_MAGIC,
 };
 
 // --- Flash layout constants tests ---
@@ -18,8 +19,8 @@ fn test_flash_base_address() {
 
 #[test]
 fn test_firmware_bank_addresses() {
-    assert_eq!(FW_A_ADDR, 0x1001_0000);
-    assert_eq!(FW_B_ADDR, 0x100D_0000);
+    assert_eq!(FW_A_ADDR, 0x1002_0000);
+    assert_eq!(FW_B_ADDR, 0x100E_0000);
 }
 
 #[test]
@@ -29,7 +30,7 @@ fn test_firmware_bank_size() {
 
 #[test]
 fn test_boot_data_address() {
-    assert_eq!(BOOT_DATA_ADDR, 0x1019_0000);
+    assert_eq!(BOOT_DATA_ADDR, 0x101A_0000);
 }
 
 #[test]
@@ -160,6 +161,37 @@ fn test_command_set_active_bank_debug() {
 fn test_command_wipe_all_debug() {
     let cmd = Command::WipeAll;
     assert!(format!("{:?}", cmd).contains("WipeAll"));
+}
+
+#[test]
+fn test_signature_constants() {
+    assert_eq!(ED25519_PUBLIC_KEY_LEN, 32);
+    assert_eq!(ED25519_SIGNATURE_LEN, 64);
+}
+
+#[test]
+fn test_command_start_update_signed_debug() {
+    let signature = SignatureBytes::from_slice(&[0xAB; ED25519_SIGNATURE_LEN]).unwrap();
+    let cmd = Command::StartUpdateSigned {
+        bank: 1,
+        size: 2048,
+        crc32: 0x1234_5678,
+        version: 3,
+        signature,
+    };
+    let debug = format!("{:?}", cmd);
+    assert!(debug.contains("StartUpdateSigned"));
+    assert!(debug.contains("2048"));
+}
+
+#[test]
+fn test_ack_status_signature_variants() {
+    assert_ne!(AckStatus::SignatureInvalid, AckStatus::SignatureRequired);
+    assert_eq!(format!("{:?}", AckStatus::SignatureInvalid), "SignatureInvalid");
+    assert_eq!(
+        format!("{:?}", AckStatus::SignatureRequired),
+        "SignatureRequired"
+    );
 }
 
 // --- Response tests ---

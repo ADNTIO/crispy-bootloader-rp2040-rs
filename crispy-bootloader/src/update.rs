@@ -16,6 +16,7 @@
 //!   `FinishUpdate` (RAM CRC + flash CRC checks).
 //! - `SetActiveBank` changes active selection only; it does not rewrite bank versions.
 
+use crate::crypto;
 use crate::flash;
 use crate::usb_transport::UsbTransport;
 use crispy_common::protocol::*;
@@ -47,6 +48,10 @@ pub enum UpdateState {
         expected_crc: u32,
         version: u32,
         bytes_received: u32,
+        /// Ed25519 signature over the firmware image, verified at FinishUpdate.
+        /// `None` means the upload is unsigned (only accepted in `allow-unsigned`
+        /// builds).
+        signature: Option<[u8; ED25519_SIGNATURE_LEN]>,
     },
     /// Persisting firmware from RAM to flash (no USB commands processed).
     #[allow(dead_code)]
@@ -74,7 +79,23 @@ pub fn dispatch_command(
             size,
             crc32,
             version,
-        } => handle_start_update(transport, state, bank, size, crc32, version),
+        } => handle_start_update(transport, state, bank, size, crc32, version, None),
+        Command::StartUpdateSigned {
+            bank,
+            size,
+            crc32,
+            version,
+            signature,
+        } => {
+            let sig = match <[u8; ED25519_SIGNATURE_LEN]>::try_from(signature.as_slice()) {
+                Ok(sig) => sig,
+                Err(_) => {
+                    transport.send(&Response::Ack(AckStatus::SignatureInvalid));
+                    return state;
+                }
+            };
+            handle_start_update(transport, state, bank, size, crc32, version, Some(sig))
+        }
         Command::DataBlock { offset, data } => handle_data_block(transport, state, offset, data),
         Command::FinishUpdate => handle_finish_update(transport, state),
         Command::Reboot => handle_reboot(transport),
@@ -106,6 +127,10 @@ fn handle_get_status(transport: &mut UsbTransport, state: UpdateState) -> Update
 }
 
 /// Handle StartUpdate command: validate parameters, erase bank, begin receiving.
+///
+/// `signature` is `Some` for signed uploads (`StartUpdateSigned`) and `None` for
+/// legacy unsigned uploads. Unsigned uploads are only accepted when the bootloader
+/// is built with the `allow-unsigned` feature.
 fn handle_start_update(
     transport: &mut UsbTransport,
     state: UpdateState,
@@ -113,11 +138,22 @@ fn handle_start_update(
     size: u32,
     crc32: u32,
     version: u32,
+    signature: Option<[u8; ED25519_SIGNATURE_LEN]>,
 ) -> UpdateState {
     // Must be in Idle state
     if !matches!(state, UpdateState::Idle) {
         transport.send(&Response::Ack(AckStatus::BadState));
         return state;
+    }
+
+    // Reject unsigned uploads unless this is an allow-unsigned (debug) build.
+    if signature.is_none() && !crypto::ALLOW_UNSIGNED {
+        defmt::warn!("StartUpdate: unsigned upload rejected (secure build)");
+        transport.send(&Response::Ack(AckStatus::SignatureRequired));
+        return state;
+    }
+    if signature.is_none() {
+        defmt::warn!("StartUpdate: accepting UNSIGNED firmware (allow-unsigned build)");
     }
 
     // Validate bank number
@@ -162,6 +198,7 @@ fn handle_start_update(
         expected_crc: crc32,
         version,
         bytes_received: 0,
+        signature,
     }
 }
 
@@ -249,6 +286,7 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
         expected_crc,
         version,
         bytes_received,
+        signature,
     } = state
     else {
         transport.send(&Response::Ack(AckStatus::BadState));
@@ -270,6 +308,7 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
             expected_crc,
             version,
             bytes_received,
+            signature,
         };
     }
 
@@ -292,6 +331,25 @@ fn handle_finish_update(transport: &mut UsbTransport, state: UpdateState) -> Upd
         );
         transport.send(&Response::Ack(AckStatus::CrcError));
         return UpdateState::Idle;
+    }
+
+    // Verify the Ed25519 signature over the firmware image in RAM before
+    // committing anything to flash. Unsigned uploads only reach here on
+    // `allow-unsigned` (debug) builds.
+    match signature {
+        Some(sig) => {
+            let ram_slice =
+                unsafe { core::slice::from_raw_parts(FW_RAM_BUFFER_ADDR, expected_size as usize) };
+            if !crypto::verify_firmware(ram_slice, &sig) {
+                defmt::warn!("FinishUpdate: signature verification FAILED");
+                transport.send(&Response::Ack(AckStatus::SignatureInvalid));
+                return UpdateState::Idle;
+            }
+            defmt::println!("FinishUpdate: signature OK");
+        }
+        None => {
+            defmt::warn!("FinishUpdate: committing UNSIGNED firmware (allow-unsigned build)");
+        }
     }
 
     defmt::println!("FinishUpdate: CRC OK, persisting to flash...");

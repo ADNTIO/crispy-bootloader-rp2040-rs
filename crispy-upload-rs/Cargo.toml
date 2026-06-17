@@ -15,10 +15,11 @@ name = "crispy-upload"
 path = "src/main.rs"
 
 [dependencies]
-crispy-common = { package = "crispy-common-rs", version = "0.0.0", path = "../crispy-common-rs", features = ["std"] }
+crispy-common = { package = "crispy-common-rs", version = "0.0.0", path = "../crispy-common-rs", features = ["std", "crypto"] }
 serialport = "4"
 postcard = { version = "1", features = ["use-std"] }
 clap = { version = "4", features = ["derive"] }
 crc = "3"
 indicatif = "0.17"
 anyhow = "1"
+getrandom = "0.2"

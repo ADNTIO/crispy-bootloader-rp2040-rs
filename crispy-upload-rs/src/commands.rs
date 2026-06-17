@@ -11,7 +11,8 @@ use anyhow::{bail, Context, Result};
 use crc::{Crc, CRC_32_ISO_HDLC};
 use indicatif::{ProgressBar, ProgressStyle};
 
-use crispy_common::protocol::{unpack_semver, AckStatus, Command, Response};
+use crispy_common::crypto::{public_key_from_seed, sign, ED25519_SEED_LEN};
+use crispy_common::protocol::{unpack_semver, AckStatus, Command, Response, SignatureBytes};
 use crispy_common::MAX_DATA_BLOCK_SIZE;
 
 use crate::transport::Transport;
@@ -56,7 +57,17 @@ pub fn status(transport: &mut Transport) -> Result<()> {
 }
 
 /// Upload firmware to the specified bank.
-pub fn upload(transport: &mut Transport, file: &Path, bank: u8, version: u32) -> Result<()> {
+///
+/// If `key_path` is provided, the firmware is signed with the Ed25519 private
+/// key (32-byte seed) and sent via `StartUpdateSigned`. Otherwise it is sent
+/// unsigned via `StartUpdate` (only accepted by `allow-unsigned` builds).
+pub fn upload(
+    transport: &mut Transport,
+    file: &Path,
+    bank: u8,
+    version: u32,
+    key_path: Option<&Path>,
+) -> Result<()> {
     // Read firmware file
     let firmware = fs::read(file).with_context(|| format!("Failed to read {}", file.display()))?;
     let size = firmware.len() as u32;
@@ -74,6 +85,32 @@ pub fn upload(transport: &mut Transport, file: &Path, bank: u8, version: u32) ->
         if bank == 0 { "A" } else { "B" }
     );
     println!("Version:  {}", version);
+
+    // Build the start command, signing the firmware if a key was provided.
+    let start_command = match key_path {
+        Some(path) => {
+            let seed = read_seed(path)?;
+            let signature = sign(&seed, &firmware);
+            println!("Signing:  Ed25519 (signed)");
+            Command::StartUpdateSigned {
+                bank,
+                size,
+                crc32,
+                version,
+                signature: SignatureBytes::from_slice(&signature)
+                    .map_err(|_| anyhow::anyhow!("signature length mismatch"))?,
+            }
+        }
+        None => {
+            println!("Signing:  none (unsigned upload)");
+            Command::StartUpdate {
+                bank,
+                size,
+                crc32,
+                version,
+            }
+        }
+    };
     println!();
 
     // Start update (includes erasing the target bank - can take 30+ seconds)
@@ -81,17 +118,15 @@ pub fn upload(transport: &mut Transport, file: &Path, bank: u8, version: u32) ->
     std::io::stdout().flush()?;
 
     let response = transport.send_recv_timeout(
-        &Command::StartUpdate {
-            bank,
-            size,
-            crc32,
-            version,
-        },
+        &start_command,
         60_000, // 60 second timeout for bank erase
     )?;
 
     match response {
         Response::Ack(AckStatus::Ok) => println!("OK"),
+        Response::Ack(AckStatus::SignatureRequired) => bail!(
+            "Bootloader requires a signed firmware. Re-run with --key <PRIVATE_KEY>."
+        ),
         Response::Ack(status) => bail!("StartUpdate failed: {:?}", status),
         _ => bail!("Unexpected response: {:?}", response),
     }
@@ -140,6 +175,9 @@ pub fn upload(transport: &mut Transport, file: &Path, bank: u8, version: u32) ->
     match response {
         Response::Ack(AckStatus::Ok) => println!("OK"),
         Response::Ack(AckStatus::CrcError) => bail!("CRC verification failed!"),
+        Response::Ack(AckStatus::SignatureInvalid) => {
+            bail!("Signature verification failed (wrong key or tampered firmware)!")
+        }
         Response::Ack(status) => bail!("FinishUpdate failed: {:?}", status),
         _ => bail!("Unexpected response: {:?}", response),
     }
@@ -217,6 +255,66 @@ pub fn reboot(transport: &mut Transport) -> Result<()> {
         _ => bail!("Unexpected response: {:?}", response),
     }
 
+    Ok(())
+}
+
+/// Read a 32-byte Ed25519 secret seed from `path`.
+fn read_seed(path: &Path) -> Result<[u8; ED25519_SEED_LEN]> {
+    let bytes = fs::read(path)
+        .with_context(|| format!("Failed to read private key {}", path.display()))?;
+    <[u8; ED25519_SEED_LEN]>::try_from(bytes.as_slice()).map_err(|_| {
+        anyhow::anyhow!(
+            "Private key {} must be exactly {} bytes, got {}",
+            path.display(),
+            ED25519_SEED_LEN,
+            bytes.len()
+        )
+    })
+}
+
+/// Generate an Ed25519 key pair and write it to `out_dir`.
+pub fn keygen(out_dir: &Path, force: bool) -> Result<()> {
+    let private_path = out_dir.join("private_key.bin");
+    let public_path = out_dir.join("public_key.bin");
+
+    if !force && (private_path.exists() || public_path.exists()) {
+        bail!(
+            "Key files already exist in {} (use --force to overwrite)",
+            out_dir.display()
+        );
+    }
+
+    fs::create_dir_all(out_dir)
+        .with_context(|| format!("Failed to create {}", out_dir.display()))?;
+
+    // Generate a 32-byte secret seed from the OS CSPRNG.
+    let mut seed = [0u8; ED25519_SEED_LEN];
+    getrandom::getrandom(&mut seed).map_err(|e| anyhow::anyhow!("RNG failure: {e}"))?;
+    let public_key = public_key_from_seed(&seed);
+
+    write_key_file(&private_path, &seed)?;
+    write_key_file(&public_path, &public_key)?;
+
+    println!("Generated Ed25519 key pair:");
+    println!("  Private key: {}", private_path.display());
+    println!("  Public key:  {}", public_path.display());
+    println!();
+    println!("Keep the private key secret. The bootloader's build.rs embeds");
+    println!("keys/public_key.bin automatically; rebuild the bootloader to apply.");
+
+    Ok(())
+}
+
+/// Write key bytes to `path` with owner-only permissions where supported.
+fn write_key_file(path: &Path, bytes: &[u8]) -> Result<()> {
+    fs::write(path, bytes).with_context(|| format!("Failed to write {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(path)?.permissions();
+        perms.set_mode(0o600);
+        let _ = fs::set_permissions(path, perms);
+    }
     Ok(())
 }
 

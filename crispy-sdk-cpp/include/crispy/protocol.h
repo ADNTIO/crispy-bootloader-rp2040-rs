@@ -7,11 +7,11 @@
 
 namespace crispy {
 
-// Flash layout
+// Flash layout (bootloader occupies 128KB to hold Ed25519 verification)
 constexpr uint32_t FLASH_BASE_ADDR      = 0x10000000;
-constexpr uint32_t FW_A_ADDR            = 0x10010000;
-constexpr uint32_t FW_B_ADDR            = 0x100D0000;
-constexpr uint32_t BOOT_DATA_ADDR       = 0x10190000;
+constexpr uint32_t FW_A_ADDR            = 0x10020000;
+constexpr uint32_t FW_B_ADDR            = 0x100E0000;
+constexpr uint32_t BOOT_DATA_ADDR       = 0x101A0000;
 
 constexpr uint32_t FW_BANK_SIZE         = 768 * 1024;  // 768KB per bank
 constexpr uint32_t BOOT_DATA_MAGIC      = 0xB007DA7A;

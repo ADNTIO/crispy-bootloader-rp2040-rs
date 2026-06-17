@@ -13,6 +13,10 @@
 pub mod protocol;
 pub mod service;
 
+// Ed25519 firmware signing/verification (requires crypto feature)
+#[cfg(feature = "crypto")]
+pub mod crypto;
+
 // Flash operations for firmware (requires embedded feature)
 #[cfg(feature = "embedded")]
 pub mod flash;

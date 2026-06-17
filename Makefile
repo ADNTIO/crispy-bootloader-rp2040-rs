@@ -10,7 +10,7 @@ ifdef VERSION
 $(shell printf '$(VERSION)' > VERSION)
 endif
 
-.PHONY: help all embedded host bootloader firmware firmware-cpp upload upload-windows clean lint clippy lint-python lint-md test-unit test-integration test-ci-scripts sbom sbom-rust sbom-python scan scan-grype scan-trivy
+.PHONY: help all embedded host keygen bootloader firmware firmware-cpp upload upload-windows clean lint clippy lint-python lint-md test-unit test-integration test-ci-scripts sbom sbom-rust sbom-python scan scan-grype scan-trivy
 .PHONY: bootloader-bin firmware-bin firmware-cpp-bin bootloader-uf2
 .PHONY: flash-bootloader run-bootloader
 .PHONY: install-probe-rs install-tools update-mode reset
@@ -52,6 +52,7 @@ help:
 	@echo "  scan-trivy       Scan SBOMs with trivy"
 	@echo ""
 	@echo "Setup:"
+	@echo "  keygen           Generate Ed25519 firmware-signing key pair (keys/)"
 	@echo "  install-tools    Install cargo-binutils (rust-objcopy)"
 	@echo "  install-probe-rs Install custom probe-rs with software breakpoint support"
 	@echo ""
@@ -70,6 +71,11 @@ embedded:
 # Build host upload tool
 host:
 	cargo build --release -p crispy-upload-rs
+
+# Generate the Ed25519 firmware-signing key pair (keys/private_key.bin + public_key.bin).
+# The bootloader's build.rs embeds keys/public_key.bin on the next build.
+keygen:
+	cargo run --release -p crispy-upload-rs -- keygen --out-dir keys
 
 # Individual targets
 bootloader:
@@ -125,7 +131,7 @@ lint-md:
 
 # Unit tests (Rust + Python, no hardware needed)
 test-unit:
-	cargo test -p crispy-common-rs
+	cargo test -p crispy-common-rs --features crypto
 	cd crispy-common-python && uv run pytest -v
 
 # All integration tests (version + bootsequence + deployment)

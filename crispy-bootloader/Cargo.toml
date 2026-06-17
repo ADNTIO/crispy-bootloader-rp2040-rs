@@ -14,8 +14,14 @@ categories = ["embedded", "no-std", "hardware-support"]
 name = "crispy-bootloader"
 path = "src/main.rs"
 
+[features]
+# Accept unsigned firmware uploads (development default). Build with
+# `--no-default-features` for a signature-only (secure) bootloader.
+default = ["allow-unsigned"]
+allow-unsigned = []
+
 [dependencies]
-crispy-common = { package = "crispy-common-rs", version = "0.0.0", path = "../crispy-common-rs", features = ["embedded", "defmt"] }
+crispy-common = { package = "crispy-common-rs", version = "0.0.0", path = "../crispy-common-rs", features = ["embedded", "defmt", "crypto"] }
 rp2040-boot2 = "0.3"
 rp2040-hal = { version = "0.11", features = ["rt", "critical-section-impl"] }
 embedded-hal = "1.0.0"

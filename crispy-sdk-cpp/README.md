@@ -67,7 +67,7 @@ int main() {
 ```cpp
 namespace crispy {
     constexpr uint32_t FLASH_BASE_ADDR      = 0x10000000;
-    constexpr uint32_t BOOT_DATA_ADDR       = 0x10190000;
+    constexpr uint32_t BOOT_DATA_ADDR       = 0x101A0000;
     constexpr uint32_t BOOT_DATA_MAGIC      = 0xB007DA7A;
     constexpr uint32_t RAM_UPDATE_FLAG_ADDR = 0x2003BFF0;
     constexpr uint32_t RAM_UPDATE_MAGIC     = 0x0FDA7E00;

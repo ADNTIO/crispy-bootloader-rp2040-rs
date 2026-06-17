@@ -8,7 +8,7 @@
 crispy-upload [--version|-v] [--port <PORT>] <COMMAND>
 ```
 
-`--port` is required for all commands except `bin2uf2`.
+`--port` is required for all commands except `bin2uf2` and `keygen`.
 
 ## Show Tool Version
 
@@ -39,7 +39,7 @@ Bootloader Status:
 
 On older bootloader builds, `Bootloader` may be shown as `unknown`.
 
-### `upload <FILE> [--bank <0|1>] [--fw-version <N>]`
+### `upload <FILE> [--bank <0|1>] [--fw-version <N>] [--key <PRIVATE_KEY>]`
 
 Upload a firmware binary to a target bank:
 
@@ -49,6 +49,25 @@ crispy-upload --port /dev/ttyACM0 upload firmware.bin --bank 0 --fw-version 1
 
 `--version` remains accepted as an alias of `--fw-version` for backward compatibility.
 Use `-V` as the short form for firmware version.
+
+Pass `--key <PRIVATE_KEY>` (short `-k`) to sign the firmware with an Ed25519
+private key (32-byte seed) and upload it via `StartUpdateSigned`:
+
+```bash
+crispy-upload --port /dev/ttyACM0 upload firmware.bin --key keys/private_key.bin
+```
+
+Without `--key`, the firmware is uploaded unsigned (accepted only by
+`allow-unsigned` bootloader builds). See
+[Sign firmware](../how-to/sign-firmware.md).
+
+### `keygen [--out-dir <DIR>] [--force]`
+
+Generate an Ed25519 signing key pair (`private_key.bin` + `public_key.bin`):
+
+```bash
+crispy-upload keygen --out-dir keys
+```
 
 ### `set-bank <BANK>`
 

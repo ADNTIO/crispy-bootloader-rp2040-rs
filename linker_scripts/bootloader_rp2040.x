@@ -2,10 +2,13 @@
 * SPDX-License-Identifier: MIT OR Apache-2.0
 * Bootloader linker script for RP2040
 *
-* RAM layout (256KB):
+* RAM layout (264KB):
 *   0x20000000 - 0x20030000: Firmware code (192KB, copied by bootloader)
 *   0x20030000 - 0x2003C000: Firmware data/BSS/stack (48KB)
-*   0x2003C000 - 0x20040000: Bootloader data/BSS/stack (16KB)
+*   0x2003C000 - 0x20042000: Bootloader data/BSS/stack (24KB, incl. SRAM4/5)
+*
+* Note: the RAM update flag lives just below the bootloader RAM region at
+* 0x2003BFF0 so it survives the bootloader's RAM initialization.
 */
 
 /* =========================== MEMORY LAYOUT CONFIG =========================== */
@@ -13,14 +16,14 @@
 
 __flash_base       = 0x10000000;
 __boot2_size       = 0x100;      /* 256B - fixed by RP2040 */
-__bootloader_size  = 0x10000;    /* 64KB - adjust as needed */
+__bootloader_size  = 0x20000;    /* 128KB - holds Ed25519 signature verification */
 __fw_bank_size     = 0xC0000;    /* 768KB per firmware bank */
 __boot_data_size   = 0x1000;     /* 4KB for boot metadata */
 __fw_copy_size     = 0x30000;    /* 192KB copied to RAM */
 
-/* Bootloader RAM (top of SRAM) */
+/* Bootloader RAM (top of SRAM, including striped SRAM4/5 up to 0x20042000) */
 __bootloader_ram   = 0x2003C000;
-__bootloader_ram_size = 16K;
+__bootloader_ram_size = 24K;
 
 /* Firmware RAM base (copied from flash) */
 __fw_ram_base      = 0x20000000;
@@ -38,8 +41,8 @@ __boot_data_addr   = __fw_b_entry + __fw_bank_size;
 
 MEMORY {
     BOOT2 : ORIGIN = 0x10000000, LENGTH = 0x100
-    FLASH : ORIGIN = 0x10000100, LENGTH = 0xFF00  /* 64KB - 256B = 65280 bytes */
-    RAM   : ORIGIN = 0x2003C000, LENGTH = 16K
+    FLASH : ORIGIN = 0x10000100, LENGTH = 0x1FF00  /* 128KB - 256B = 130816 bytes */
+    RAM   : ORIGIN = 0x2003C000, LENGTH = 24K  /* up to 0x20042000 (incl. SRAM4/5) */
 }
 
 EXTERN(BOOT2_FIRMWARE)

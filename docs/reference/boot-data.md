@@ -1,6 +1,6 @@
 # Boot Data Reference
 
-Boot metadata is stored in flash at `BOOT_DATA_ADDR` (`0x10190000`).
+Boot metadata is stored in flash at `BOOT_DATA_ADDR` (`0x101A0000`).
 
 ## Structure
 
