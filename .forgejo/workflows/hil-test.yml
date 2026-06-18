@@ -102,12 +102,22 @@ jobs:
           EOF
 
       - name: Release the RP
+        # Always free the lease so the RP is available to other jobs, whatever
+        # happened above. Skips cleanly if no lease was acquired; never fails the
+        # job (the controller's lease TTL is the ultimate safety net).
         if: always()
         run: |
+          lease="${{ steps.rp.outputs.lease-id }}"
+          if [ -z "$lease" ]; then echo "No lease acquired — nothing to release."; exit 0; fi
           jwt=$(curl -fsS -X POST https://authentik.k8s.adnt.io/application/o/token/ \
             -d grant_type=client_credentials \
             -d client_id="${{ secrets.HIL_OIDC_CLIENT_ID }}" \
             -d client_secret="${{ secrets.HIL_OIDC_CLIENT_SECRET }}" \
             -d scope=openid | grep -o '"access_token": *"[^"]*"' | sed 's/.*: *"\(.*\)"$/\1/')
-          curl -fsS -X DELETE -H "Authorization: Bearer $jwt" \
-            "https://hil.k8s.adnt.io/api/lease/${{ steps.rp.outputs.lease-id }}"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+            -H "Authorization: Bearer $jwt" \
+            "https://hil.k8s.adnt.io/api/lease/$lease")
+          case "$code" in
+            2*) echo "✅ Released lease $lease (HTTP $code) — RP is free for other jobs." ;;
+            *)  echo "::warning::lease $lease release returned HTTP $code (rely on the controller TTL otherwise)" ;;
+          esac
