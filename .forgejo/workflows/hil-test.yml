@@ -18,6 +18,11 @@ jobs:
           components: llvm-tools-preview
 
       - name: Build bootloader + firmware (ELF + firmware.bin)
+        env:
+          # Le runner casse sur "HTTP2 framing layer" en téléchargeant depuis
+          # crates.io ; HTTP/1.1 (pas de multiplexing) + retries = robuste.
+          CARGO_HTTP_MULTIPLEXING: "false"
+          CARGO_NET_RETRY: "10"
         run: |
           cargo install cargo-binutils flip-link --locked   # rust-objcopy + linker embarqué
           cargo build --release --target thumbv6m-none-eabi \
