@@ -41,8 +41,11 @@ jobs:
       # --- Copie sources (tests) + artefacts buildés sur la RP ---
       - name: Copier le dépôt et le firmware sur la RP
         run: |
+          # Les runs tournent les tests en root (accès sonde/série) → ils laissent
+          # des fichiers root-owned (.venv, target) dans ~/crispy, que la RP du banc
+          # conserve d'un lease à l'autre. On nettoie donc en sudo.
           git archive --format=tar HEAD \
-            | ssh hil-rp 'rm -rf ~/crispy && mkdir -p ~/crispy && tar -x -C ~/crispy'
+            | ssh hil-rp 'sudo rm -rf ~/crispy && mkdir -p ~/crispy && tar -x -C ~/crispy'
           ssh hil-rp 'mkdir -p ~/crispy/target/thumbv6m-none-eabi/release'
           scp target/thumbv6m-none-eabi/release/crispy-bootloader \
               hil-rp:~/crispy/target/thumbv6m-none-eabi/release/crispy-bootloader
