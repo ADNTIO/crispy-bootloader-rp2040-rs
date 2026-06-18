@@ -14,8 +14,8 @@ inputs:
     description: "OIDC client_secret (Actions secret HIL_OIDC_CLIENT_SECRET)"
     required: true
   max-wait-seconds:
-    description: "Max time to keep waiting for a free RP when the bench is busy"
-    default: "1800"
+    description: "Max time to keep waiting for a free RP when the bench is busy (same-repo queueing is handled by the workflow concurrency group; this is the safety net for external contention)"
+    default: "600"
   retry-interval:
     description: "Seconds between lease attempts while the bench is busy"
     default: "30"
