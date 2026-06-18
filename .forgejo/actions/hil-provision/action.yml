@@ -1,0 +1,59 @@
+name: "HIL provision"
+description: "Réserve une RP du banc HIL (power-cycle PoE + boot) et configure l'accès SSH (alias hil-rp)."
+inputs:
+  authentik-url:
+    description: "Base Authentik (pour le JWT client_credentials)"
+    default: "https://authentik.k8s.adnt.io"
+  api-url:
+    description: "URL de l'API du contrôleur HIL"
+    default: "https://hil.k8s.adnt.io/api"
+  client-id:
+    description: "OIDC client_id (secret d'Actions HIL_OIDC_CLIENT_ID)"
+    required: true
+  client-secret:
+    description: "OIDC client_secret (secret d'Actions HIL_OIDC_CLIENT_SECRET)"
+    required: true
+outputs:
+  ip:
+    description: "IP de la RP provisionnée"
+    value: ${{ steps.lease.outputs.ip }}
+  lease-id:
+    description: "ID du lease (à passer à la libération)"
+    value: ${{ steps.lease.outputs.lease-id }}
+runs:
+  using: composite
+  steps:
+    - id: lease
+      shell: bash
+      run: |
+        set -euo pipefail
+        # 1) JWT M2M via client_credentials (Authentik gère/émet le token).
+        jwt=$(curl -fsS -X POST "${{ inputs.authentik-url }}/application/o/token/" \
+          -d grant_type=client_credentials \
+          -d client_id="${{ inputs.client-id }}" \
+          -d client_secret="${{ inputs.client-secret }}" \
+          -d scope=openid \
+          | grep -o '"access_token": *"[^"]*"' | sed 's/.*: *"\(.*\)"$/\1/')
+        [ -n "$jwt" ] || { echo "::error::pas de JWT (client_credentials)"; exit 1; }
+        # 2) Réservation d'une RP avec le JWT.
+        echo "🔧 Réservation d'une RP (power-cycle PoE + boot, ~60 s)…"
+        resp=$(curl -fsS --max-time 220 -X POST \
+          -H "Authorization: Bearer $jwt" "${{ inputs.api-url }}/lease")
+        jget() { printf '%s' "$resp" | grep -o "\"$1\": *\"[^\"]*\"" | head -1 | sed 's/.*: *"\(.*\)"$/\1/'; }
+        ip=$(jget ip); lid=$(jget lease_id)
+        mkdir -p ~/.ssh
+        jget ssh_key_b64 | base64 -d > ~/.ssh/hil-rp
+        chmod 600 ~/.ssh/hil-rp
+        cat >> ~/.ssh/config <<EOF
+        Host hil-rp
+          HostName $ip
+          User hil
+          IdentityFile ~/.ssh/hil-rp
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+        EOF
+        chmod 600 ~/.ssh/config
+        echo "ip=$ip"       >> "$GITHUB_OUTPUT"
+        echo "lease-id=$lid" >> "$GITHUB_OUTPUT"
+        echo "✅ RP prête : $ip — utilise  ssh hil-rp \"…\"  /  scp fw.elf hil-rp:/tmp/"
+        echo "🖥️  Console web : https://hil.k8s.adnt.io/"
