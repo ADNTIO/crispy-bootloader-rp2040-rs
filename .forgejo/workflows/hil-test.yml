@@ -76,6 +76,12 @@ jobs:
           uv --version
           probe-rs --version
           echo "Sondes :"; probe-rs list
+          echo "--- lsusb (la cible rp2040 est-elle alimentée/énumérée ? attendu 2e8a:000a/b) ---"
+          lsusb || true
+          echo "--- probe-rs info --chip RP2040 (attache SWD normale) ---"
+          probe-rs info --chip RP2040 2>&1 | head -25 || true
+          echo "--- probe-rs info --chip RP2040 --connect-under-reset ---"
+          probe-rs info --chip RP2040 --connect-under-reset 2>&1 | head -25 || true
           echo "::endgroup::"
 
           echo "::group::tests protocole (build sauté, flash via SWD)"
