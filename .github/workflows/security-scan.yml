@@ -25,7 +25,9 @@ permissions:
 jobs:
   dependency-review:
     name: 0. Dependency review (PR diff, HIGH+)
-    if: github.event_name == 'pull_request'
+    # GitHub-only: dependency-review-action + the artifact/SARIF APIs are
+    # unsupported on Forgejo (it presents as GHES).
+    if: github.event_name == 'pull_request' && github.server_url == 'https://github.com'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -65,6 +67,10 @@ jobs:
           echo "sboms=$names" >> "$GITHUB_OUTPUT"
 
       - name: Upload SBOM artifacts
+        # upload-artifact@v4+ uses the v2 artifact protocol, unsupported on
+        # Forgejo (GHES). Only publish on GitHub; on Forgejo the SBOMs are
+        # still generated above, the run just skips the upload.
+        if: github.server_url == 'https://github.com'
         uses: actions/upload-artifact@v5
         with:
           name: sbom-scan
@@ -74,6 +80,8 @@ jobs:
   grype:
     name: 2a. Grype (${{ matrix.sbom }})
     needs: sbom
+    # Relies on artifact download + SARIF upload to code-scanning (GitHub-only).
+    if: github.server_url == 'https://github.com'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -137,6 +145,8 @@ jobs:
   trivy:
     name: 2b. Trivy (${{ matrix.sbom }})
     needs: sbom
+    # Relies on artifact download + SARIF upload to code-scanning (GitHub-only).
+    if: github.server_url == 'https://github.com'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -197,6 +207,7 @@ jobs:
     needs: [grype, trivy]
     if: |
       failure() &&
+      github.server_url == 'https://github.com' &&
       (github.event_name == 'schedule' || github.event_name == 'push')
     runs-on: ubuntu-latest
     steps:
