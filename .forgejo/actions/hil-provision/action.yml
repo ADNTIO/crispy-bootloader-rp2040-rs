@@ -1,24 +1,24 @@
 name: "HIL provision"
-description: "Réserve une RP du banc HIL (power-cycle PoE + boot) et configure l'accès SSH (alias hil-rp)."
+description: "Reserve an RP from the HIL bench (PoE power-cycle + boot) and set up SSH access (alias hil-rp)."
 inputs:
   authentik-url:
-    description: "Base Authentik (pour le JWT client_credentials)"
+    description: "Authentik base URL (for the client_credentials JWT)"
     default: "https://authentik.k8s.adnt.io"
   api-url:
-    description: "URL de l'API du contrôleur HIL"
+    description: "HIL controller API URL"
     default: "https://hil.k8s.adnt.io/api"
   client-id:
-    description: "OIDC client_id (secret d'Actions HIL_OIDC_CLIENT_ID)"
+    description: "OIDC client_id (Actions secret HIL_OIDC_CLIENT_ID)"
     required: true
   client-secret:
-    description: "OIDC client_secret (secret d'Actions HIL_OIDC_CLIENT_SECRET)"
+    description: "OIDC client_secret (Actions secret HIL_OIDC_CLIENT_SECRET)"
     required: true
 outputs:
   ip:
-    description: "IP de la RP provisionnée"
+    description: "IP of the provisioned RP"
     value: ${{ steps.lease.outputs.ip }}
   lease-id:
-    description: "ID du lease (à passer à la libération)"
+    description: "Lease ID (pass it back when releasing)"
     value: ${{ steps.lease.outputs.lease-id }}
 runs:
   using: composite
@@ -27,16 +27,16 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # 1) JWT M2M via client_credentials (Authentik gère/émet le token).
+        # 1) M2M JWT via client_credentials (Authentik issues the token).
         jwt=$(curl -fsS -X POST "${{ inputs.authentik-url }}/application/o/token/" \
           -d grant_type=client_credentials \
           -d client_id="${{ inputs.client-id }}" \
           -d client_secret="${{ inputs.client-secret }}" \
           -d scope=openid \
           | grep -o '"access_token": *"[^"]*"' | sed 's/.*: *"\(.*\)"$/\1/')
-        [ -n "$jwt" ] || { echo "::error::pas de JWT (client_credentials)"; exit 1; }
-        # 2) Réservation d'une RP avec le JWT.
-        echo "🔧 Réservation d'une RP (power-cycle PoE + boot, ~60 s)…"
+        [ -n "$jwt" ] || { echo "::error::no JWT (client_credentials)"; exit 1; }
+        # 2) Reserve an RP using the JWT.
+        echo "🔧 Reserving an RP (PoE power-cycle + boot, ~60s)…"
         resp=$(curl -fsS --max-time 220 -X POST \
           -H "Authorization: Bearer $jwt" "${{ inputs.api-url }}/lease")
         jget() { printf '%s' "$resp" | grep -o "\"$1\": *\"[^\"]*\"" | head -1 | sed 's/.*: *"\(.*\)"$/\1/'; }
@@ -55,5 +55,5 @@ runs:
         chmod 600 ~/.ssh/config
         echo "ip=$ip"       >> "$GITHUB_OUTPUT"
         echo "lease-id=$lid" >> "$GITHUB_OUTPUT"
-        echo "✅ RP prête : $ip — utilise  ssh hil-rp \"…\"  /  scp fw.elf hil-rp:/tmp/"
-        echo "🖥️  Console web : https://hil.k8s.adnt.io/"
+        echo "✅ RP ready: $ip — use  ssh hil-rp \"…\"  /  scp fw.elf hil-rp:/tmp/"
+        echo "🖥️  Web console: https://hil.k8s.adnt.io/"

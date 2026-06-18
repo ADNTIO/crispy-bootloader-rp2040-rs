@@ -1,7 +1,7 @@
-name: HIL test — protocole bootloader sur cible rp2040
-# Forgejo-only (GitHub ignore .forgejo/). Réserve du matériel réel → manuel.
-# Principe : build l'ELF sur le runner, copie sur la RP, flash via sonde SWD
-# (probe-rs) puis exécute les tests protocole. Aucune toolchain sur la RP.
+name: HIL test — bootloader protocol on rp2040 target
+# Forgejo-only (GitHub ignores .forgejo/). Reserves real hardware → manual.
+# Principle: build the ELF on the runner, copy it to the RP, flash via the SWD
+# probe (probe-rs), then run the protocol tests. No toolchain on the RP.
 on: [workflow_dispatch]
 
 jobs:
@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # --- Build firmware sur le runner (x86, rapide) ---
+      # --- Build firmware on the runner (x86, fast) ---
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: thumbv6m-none-eabi
@@ -19,31 +19,31 @@ jobs:
 
       - name: Build bootloader + firmware (ELF + firmware.bin)
         env:
-          # Le runner casse sur "HTTP2 framing layer" en téléchargeant depuis
-          # crates.io ; HTTP/1.1 (pas de multiplexing) + retries = robuste.
+          # The runner breaks on "HTTP2 framing layer" when downloading from
+          # crates.io; HTTP/1.1 (no multiplexing) + retries is robust.
           CARGO_HTTP_MULTIPLEXING: "false"
           CARGO_NET_RETRY: "10"
         run: |
-          cargo install cargo-binutils flip-link --locked   # rust-objcopy + linker embarqué
+          cargo install cargo-binutils flip-link --locked   # rust-objcopy + embedded linker
           cargo build --release --target thumbv6m-none-eabi \
             -p crispy-bootloader -p crispy-fw-sample-rs
           rust-objcopy -O binary \
             target/thumbv6m-none-eabi/release/crispy-fw-sample-rs \
             target/firmware.bin
 
-      # --- Réservation d'une RP du banc ---
+      # --- Reserve an RP from the bench ---
       - id: rp
         uses: ./.forgejo/actions/hil-provision
         with:
           client-id: ${{ secrets.HIL_OIDC_CLIENT_ID }}
           client-secret: ${{ secrets.HIL_OIDC_CLIENT_SECRET }}
 
-      # --- Copie sources (tests) + artefacts buildés sur la RP ---
-      - name: Copier le dépôt et le firmware sur la RP
+      # --- Copy sources (tests) + built artifacts to the RP ---
+      - name: Copy repo and firmware to the RP
         run: |
-          # Les runs tournent les tests en root (accès sonde/série) → ils laissent
-          # des fichiers root-owned (.venv, target) dans ~/crispy, que la RP du banc
-          # conserve d'un lease à l'autre. On nettoie donc en sudo.
+          # Runs execute the tests as root (probe/serial access), leaving
+          # root-owned files (.venv, target) in ~/crispy that the bench RP keeps
+          # across leases. So we clean up with sudo.
           git archive --format=tar HEAD \
             | ssh hil-rp 'sudo rm -rf ~/crispy && mkdir -p ~/crispy && tar -x -C ~/crispy'
           ssh hil-rp 'mkdir -p ~/crispy/target/thumbv6m-none-eabi/release'
@@ -51,18 +51,18 @@ jobs:
               hil-rp:~/crispy/target/thumbv6m-none-eabi/release/crispy-bootloader
           scp target/firmware.bin hil-rp:~/crispy/target/firmware.bin
 
-      # --- probe-rs + uv (légers), flash + tests protocole, en root sur la RP ---
-      - name: Flash + tests protocole sur la cible
+      # --- probe-rs + uv (lightweight), flash + protocol tests, as root on the RP ---
+      - name: Flash + protocol tests on the target
         run: |
           ssh hil-rp 'sudo -n bash -s' <<'EOF'
           set -euxo pipefail
           export HOME=/root PATH=/root/.cargo/bin:/usr/local/bin:$PATH
           REPO=/home/hil/crispy
 
-          echo "::group::préflight — accès sortant"
+          echo "::group::preflight — outbound access"
           for url in https://astral.sh https://github.com; do
             curl -fsS --max-time 20 -o /dev/null "$url" && echo "OK $url" \
-              || { echo "::error::pas d'accès sortant vers $url"; exit 1; }
+              || { echo "::error::no outbound access to $url"; exit 1; }
           done
           echo "::endgroup::"
 
@@ -75,22 +75,22 @@ jobs:
               https://github.com/probe-rs/probe-rs/releases/latest/download/probe-rs-tools-installer.sh | sh
           uv --version
           probe-rs --version
-          echo "Sondes :"; probe-rs list
-          echo "--- lsusb (la cible rp2040 est-elle alimentée/énumérée ? attendu 2e8a:000a/b) ---"
+          echo "Probes:"; probe-rs list
+          echo "--- lsusb (is the rp2040 target powered/enumerated? expect 2e8a:000a/b) ---"
           lsusb || true
-          echo "--- probe-rs info --chip RP2040 (attache SWD normale) ---"
+          echo "--- probe-rs info --chip RP2040 (normal SWD attach) ---"
           probe-rs info --chip RP2040 2>&1 | head -25 || true
           echo "--- probe-rs info --chip RP2040 --connect-under-reset ---"
           probe-rs info --chip RP2040 --connect-under-reset 2>&1 | head -25 || true
           echo "::endgroup::"
 
-          echo "::group::tests protocole (build sauté, flash via SWD)"
+          echo "::group::protocol tests (build skipped, flash via SWD)"
           cd "$REPO/tests/integration"
           CRISPY_SKIP_BUILD=1 uv run pytest boot/bootsequence -v --tb=short
           echo "::endgroup::"
           EOF
 
-      - name: Libérer la RP
+      - name: Release the RP
         if: always()
         run: |
           jwt=$(curl -fsS -X POST https://authentik.k8s.adnt.io/application/o/token/ \
