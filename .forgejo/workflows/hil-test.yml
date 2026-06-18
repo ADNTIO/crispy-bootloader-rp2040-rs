@@ -1,8 +1,12 @@
 name: HIL test — bootloader protocol on rp2040 target
-# Forgejo-only (GitHub ignores .forgejo/). Reserves real hardware → manual.
+# Forgejo-only (GitHub ignores .forgejo/). Reserves real hardware (one bench RP
+# per run, ~4 min), so it runs on each commit to the HIL branch + on demand.
 # Principle: build the ELF on the runner, copy it to the RP, flash via the SWD
 # probe (probe-rs), then run the protocol tests. No toolchain on the RP.
-on: [workflow_dispatch]
+on:
+  push:
+    branches: [ci/hil-forgejo]
+  workflow_dispatch:
 
 jobs:
   hil-test:
