@@ -1,5 +1,5 @@
 name: "HIL provision"
-description: "Reserve an RP from the HIL bench (PoE power-cycle + boot) and set up SSH access (alias hil-rp)."
+description: "Reserve an RP from the HIL bench (PoE power-cycle + boot) and set up SSH access (alias hil-rp). Waits and retries if the bench has no free RP."
 inputs:
   authentik-url:
     description: "Authentik base URL (for the client_credentials JWT)"
@@ -13,6 +13,12 @@ inputs:
   client-secret:
     description: "OIDC client_secret (Actions secret HIL_OIDC_CLIENT_SECRET)"
     required: true
+  max-wait-seconds:
+    description: "Max time to keep waiting for a free RP when the bench is busy"
+    default: "1800"
+  retry-interval:
+    description: "Seconds between lease attempts while the bench is busy"
+    default: "30"
 outputs:
   ip:
     description: "IP of the provisioned RP"
@@ -35,14 +41,36 @@ runs:
           -d scope=openid \
           | grep -o '"access_token": *"[^"]*"' | sed 's/.*: *"\(.*\)"$/\1/')
         [ -n "$jwt" ] || { echo "::error::no JWT (client_credentials)"; exit 1; }
-        # 2) Reserve an RP using the JWT.
-        echo "🔧 Reserving an RP (PoE power-cycle + boot, ~60s)…"
-        resp=$(curl -fsS --max-time 220 -X POST \
-          -H "Authorization: Bearer $jwt" "${{ inputs.api-url }}/lease")
-        jget() { printf '%s' "$resp" | grep -o "\"$1\": *\"[^\"]*\"" | head -1 | sed 's/.*: *"\(.*\)"$/\1/'; }
-        ip=$(jget ip); lid=$(jget lease_id)
+
+        # Extract a JSON string field from a body: jget "<body>" "<key>"
+        jget() { printf '%s' "$1" | grep -o "\"$2\": *\"[^\"]*\"" | head -1 | sed 's/.*: *"\(.*\)"$/\1/' || true; }
+
+        # 2) Reserve an RP. If the bench has no free RP yet, wait and retry
+        #    (the controller said nothing is available) instead of failing.
+        deadline=$(( $(date +%s) + ${{ inputs.max-wait-seconds }} ))
+        attempt=0
+        while :; do
+          attempt=$((attempt + 1))
+          echo "🔧 Requesting an RP lease (attempt $attempt)…"
+          resp=$(curl -sS --max-time 230 -w $'\n%{http_code}' -X POST \
+            -H "Authorization: Bearer $jwt" "${{ inputs.api-url }}/lease" 2>/dev/null || true)
+          code=$(printf '%s' "$resp" | tail -n1)
+          body=$(printf '%s' "$resp" | sed '$d')
+          ip=$(jget "$body" ip); lid=$(jget "$body" lease_id)
+          if { [ "$code" = "200" ] || [ "$code" = "201" ]; } && [ -n "$ip" ] && [ -n "$lid" ]; then
+            break
+          fi
+          if [ "$(date +%s)" -ge "$deadline" ]; then
+            echo "::error::no RP available after waiting ${{ inputs.max-wait-seconds }}s (last HTTP ${code:-none})"
+            exit 1
+          fi
+          echo "⏳ Bench busy / no free RP (HTTP ${code:-none}) — waiting ${{ inputs.retry-interval }}s then retrying…"
+          sleep ${{ inputs.retry-interval }}
+        done
+
+        echo "✅ Got a lease on $ip"
         mkdir -p ~/.ssh
-        jget ssh_key_b64 | base64 -d > ~/.ssh/hil-rp
+        jget "$body" ssh_key_b64 | base64 -d > ~/.ssh/hil-rp
         chmod 600 ~/.ssh/hil-rp
         cat >> ~/.ssh/config <<EOF
         Host hil-rp

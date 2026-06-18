@@ -3,6 +3,11 @@ name: HIL smoke — bench discovery (RP + rp2040)
 # hardware, so no automatic run on push.
 on: [workflow_dispatch]
 
+# Share the bench serialization group with hil-test (single RP on the bench).
+concurrency:
+  group: hil-bench
+  cancel-in-progress: false
+
 jobs:
   discover:
     runs-on: docker

@@ -8,6 +8,13 @@ on:
     branches: [ci/hil-forgejo]
   workflow_dispatch:
 
+# The bench has a single RP: serialize bench-using runs. A new run waits for the
+# previous one in this group to finish instead of fighting over the hardware
+# (cancel-in-progress: false → queue, don't cancel the running one).
+concurrency:
+  group: hil-bench
+  cancel-in-progress: false
+
 jobs:
   hil-test:
     runs-on: ubuntu-latest
