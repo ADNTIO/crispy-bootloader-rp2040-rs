@@ -69,6 +69,14 @@ runs:
         done
 
         echo "✅ Got a lease on $ip"
+        # Dump the full lease response (ssh key redacted) so we can see every
+        # field the controller returns — RP id/tags (to request the right one)
+        # and any release hint (the DELETE /lease/<id> route currently 404s).
+        echo "ℹ️  Lease response (ssh_key_b64 redacted):"
+        printf '%s' "$body" \
+          | sed 's/"ssh_key_b64": *"[^"]*"/"ssh_key_b64":"<redacted>"/' \
+          | head -c 4000
+        echo
         mkdir -p ~/.ssh
         jget "$body" ssh_key_b64 | base64 -d > ~/.ssh/hil-rp
         chmod 600 ~/.ssh/hil-rp

@@ -117,6 +117,26 @@ jobs:
           probe-rs info --chip RP2040 --connect-under-reset 2>&1 | head -25 || true
           echo "::endgroup::"
 
+          # --- USB CDC diagnostic --------------------------------------------
+          # SWD flash works on this RP but the tests time out on the bootloader
+          # serial port (2e8a:000a). Reset the freshly-flashed target and watch
+          # whether the rp2040 enumerates its USB CDC at all. This tells the
+          # bench owner WHICH link is broken:
+          #   * dmesg shows a connect/descriptor-read attempt  -> data line wired
+          #     but signalling/firmware-CDC fails;
+          #   * dmesg shows NOTHING after reset                -> rp2040 USB-data
+          #     not connected to this host (power-only cable / not the right RP).
+          echo "::group::USB CDC diagnostic (rp2040 serial = 2e8a:000a)"
+          dmesg -C 2>/dev/null || true            # clear, so we only see the reset's events
+          probe-rs reset --chip RP2040 2>&1 | head -5 || true
+          sleep 3
+          echo "lsusb (2e8a):"; lsusb | grep -i 2e8a || echo "  (no 2e8a device on USB)"
+          echo "serial ports:"; ls -l /dev/ttyACM* 2>/dev/null || echo "  (no /dev/ttyACM*)"
+          echo "kernel USB events since reset:"
+          dmesg 2>/dev/null | grep -iE 'usb|cdc|acm|2e8a' | tail -25 \
+            || echo "  (no USB kernel events — rp2040 USB-data likely not wired to this host)"
+          echo "::endgroup::"
+
           echo "::group::protocol tests (build skipped, flash via SWD)"
           cd "$REPO/tests/integration"
           CRISPY_SKIP_BUILD=1 uv run pytest boot/bootsequence -v --tb=short
