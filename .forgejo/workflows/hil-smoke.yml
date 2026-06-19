@@ -20,8 +20,31 @@ jobs:
           client-id: ${{ secrets.HIL_OIDC_CLIENT_ID }}
           client-secret: ${{ secrets.HIL_OIDC_CLIENT_SECRET }}
 
-      - name: Discover the target and tooling on the RP
+      # Discovery + lease release via a `trap … EXIT` inside this single step
+      # (Forgejo does not reliably run a following `if: always()` step after a
+      # failure, which would leak the lease and keep the RP busy).
+      - name: Discover the target and tooling on the RP (frees the RP on exit)
+        env:
+          LEASE_ID: ${{ steps.rp.outputs.lease-id }}
+          HIL_OIDC_CLIENT_ID: ${{ secrets.HIL_OIDC_CLIENT_ID }}
+          HIL_OIDC_CLIENT_SECRET: ${{ secrets.HIL_OIDC_CLIENT_SECRET }}
         run: |
+          release_lease() {
+            set +e
+            [ -n "${LEASE_ID:-}" ] || { echo "🧹 No lease to release."; return 0; }
+            jwt=$(curl -fsS -X POST https://authentik.k8s.adnt.io/application/o/token/ \
+              -d grant_type=client_credentials \
+              -d client_id="$HIL_OIDC_CLIENT_ID" -d client_secret="$HIL_OIDC_CLIENT_SECRET" \
+              -d scope=openid | grep -o '"access_token": *"[^"]*"' | sed 's/.*: *"\(.*\)"$/\1/')
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+              -H "Authorization: Bearer $jwt" "https://hil.k8s.adnt.io/api/lease/$LEASE_ID")
+            case "$code" in
+              2*) echo "🧹 Released lease $LEASE_ID (HTTP $code) — RP free for other jobs." ;;
+              *)  echo "::warning::lease $LEASE_ID release returned HTTP $code (rely on the controller TTL otherwise)" ;;
+            esac
+          }
+          trap release_lease EXIT
+
           ssh hil-rp 'bash -s' <<'EOF'
           set +e
           line() { printf '\n=== %s ===\n' "$1"; }
@@ -55,24 +78,3 @@ jobs:
           line "Serial access (dialout group)"
           groups
           EOF
-
-      - name: Release the RP
-        # Always free the lease so the RP is available to other jobs, whatever
-        # happened above. Skips cleanly if no lease was acquired; never fails the
-        # job (the controller's lease TTL is the ultimate safety net).
-        if: always()
-        run: |
-          lease="${{ steps.rp.outputs.lease-id }}"
-          if [ -z "$lease" ]; then echo "No lease acquired — nothing to release."; exit 0; fi
-          jwt=$(curl -fsS -X POST https://authentik.k8s.adnt.io/application/o/token/ \
-            -d grant_type=client_credentials \
-            -d client_id="${{ secrets.HIL_OIDC_CLIENT_ID }}" \
-            -d client_secret="${{ secrets.HIL_OIDC_CLIENT_SECRET }}" \
-            -d scope=openid | grep -o '"access_token": *"[^"]*"' | sed 's/.*: *"\(.*\)"$/\1/')
-          code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-            -H "Authorization: Bearer $jwt" \
-            "https://hil.k8s.adnt.io/api/lease/$lease")
-          case "$code" in
-            2*) echo "✅ Released lease $lease (HTTP $code) — RP is free for other jobs." ;;
-            *)  echo "::warning::lease $lease release returned HTTP $code (rely on the controller TTL otherwise)" ;;
-          esac

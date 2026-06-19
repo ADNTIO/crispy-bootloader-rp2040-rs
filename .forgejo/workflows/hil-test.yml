@@ -49,12 +49,36 @@ jobs:
           client-id: ${{ secrets.HIL_OIDC_CLIENT_ID }}
           client-secret: ${{ secrets.HIL_OIDC_CLIENT_SECRET }}
 
-      # --- Copy sources (tests) + built artifacts to the RP ---
-      - name: Copy repo and firmware to the RP
+      # --- Copy + flash + tests, with the lease ALWAYS released on exit ---
+      # The release is done via a bash `trap … EXIT` inside this single step,
+      # NOT a separate `if: always()` step: Forgejo does not reliably run a
+      # following `always()` step after a failure, which would leak the lease.
+      - name: Copy, flash and run protocol tests (frees the RP on exit)
+        env:
+          LEASE_ID: ${{ steps.rp.outputs.lease-id }}
+          HIL_OIDC_CLIENT_ID: ${{ secrets.HIL_OIDC_CLIENT_ID }}
+          HIL_OIDC_CLIENT_SECRET: ${{ secrets.HIL_OIDC_CLIENT_SECRET }}
         run: |
-          # Runs execute the tests as root (probe/serial access), leaving
-          # root-owned files (.venv, target) in ~/crispy that the bench RP keeps
-          # across leases. So we clean up with sudo.
+          release_lease() {
+            set +e
+            [ -n "${LEASE_ID:-}" ] || { echo "🧹 No lease to release."; return 0; }
+            jwt=$(curl -fsS -X POST https://authentik.k8s.adnt.io/application/o/token/ \
+              -d grant_type=client_credentials \
+              -d client_id="$HIL_OIDC_CLIENT_ID" -d client_secret="$HIL_OIDC_CLIENT_SECRET" \
+              -d scope=openid | grep -o '"access_token": *"[^"]*"' | sed 's/.*: *"\(.*\)"$/\1/')
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+              -H "Authorization: Bearer $jwt" "https://hil.k8s.adnt.io/api/lease/$LEASE_ID")
+            case "$code" in
+              2*) echo "🧹 Released lease $LEASE_ID (HTTP $code) — RP free for other jobs." ;;
+              *)  echo "::warning::lease $LEASE_ID release returned HTTP $code (rely on the controller TTL otherwise)" ;;
+            esac
+          }
+          trap release_lease EXIT
+          set -euo pipefail
+
+          # Copy sources + built firmware to the RP. Runs execute the tests as
+          # root (probe/serial access), leaving root-owned files (.venv, target)
+          # in ~/crispy that the bench RP keeps across leases — clean with sudo.
           git archive --format=tar HEAD \
             | ssh hil-rp 'sudo rm -rf ~/crispy && mkdir -p ~/crispy && tar -x -C ~/crispy'
           ssh hil-rp 'mkdir -p ~/crispy/target/thumbv6m-none-eabi/release'
@@ -62,9 +86,7 @@ jobs:
               hil-rp:~/crispy/target/thumbv6m-none-eabi/release/crispy-bootloader
           scp target/firmware.bin hil-rp:~/crispy/target/firmware.bin
 
-      # --- probe-rs + uv (lightweight), flash + protocol tests, as root on the RP ---
-      - name: Flash + protocol tests on the target
-        run: |
+          # probe-rs + uv (lightweight), flash via SWD + protocol tests, as root.
           ssh hil-rp 'sudo -n bash -s' <<'EOF'
           set -euxo pipefail
           export HOME=/root PATH=/root/.cargo/bin:/usr/local/bin:$PATH
@@ -100,24 +122,3 @@ jobs:
           CRISPY_SKIP_BUILD=1 uv run pytest boot/bootsequence -v --tb=short
           echo "::endgroup::"
           EOF
-
-      - name: Release the RP
-        # Always free the lease so the RP is available to other jobs, whatever
-        # happened above. Skips cleanly if no lease was acquired; never fails the
-        # job (the controller's lease TTL is the ultimate safety net).
-        if: always()
-        run: |
-          lease="${{ steps.rp.outputs.lease-id }}"
-          if [ -z "$lease" ]; then echo "No lease acquired — nothing to release."; exit 0; fi
-          jwt=$(curl -fsS -X POST https://authentik.k8s.adnt.io/application/o/token/ \
-            -d grant_type=client_credentials \
-            -d client_id="${{ secrets.HIL_OIDC_CLIENT_ID }}" \
-            -d client_secret="${{ secrets.HIL_OIDC_CLIENT_SECRET }}" \
-            -d scope=openid | grep -o '"access_token": *"[^"]*"' | sed 's/.*: *"\(.*\)"$/\1/')
-          code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-            -H "Authorization: Bearer $jwt" \
-            "https://hil.k8s.adnt.io/api/lease/$lease")
-          case "$code" in
-            2*) echo "✅ Released lease $lease (HTTP $code) — RP is free for other jobs." ;;
-            *)  echo "::warning::lease $lease release returned HTTP $code (rely on the controller TTL otherwise)" ;;
-          esac
