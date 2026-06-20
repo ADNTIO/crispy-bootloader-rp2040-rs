@@ -19,7 +19,7 @@ jobs:
         with:
           client-id: ${{ secrets.HIL_OIDC_CLIENT_ID }}
           client-secret: ${{ secrets.HIL_OIDC_CLIENT_SECRET }}
-          target-pi: "10.40.80.121"   # the RP wired to the rp2040 target
+          target: "rp2040"   # controller picks an RP wired with this target
 
       # Discovery + lease release via a `trap … EXIT` inside this single step
       # (Forgejo does not reliably run a following `if: always()` step after a
@@ -40,8 +40,9 @@ jobs:
             code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
               -H "Authorization: Bearer $jwt" "https://hil.k8s.adnt.io/api/lease/$LEASE_ID")
             case "$code" in
-              2*) echo "🧹 Released lease $LEASE_ID (HTTP $code) — RP free for other jobs." ;;
-              *)  echo "::warning::lease $LEASE_ID release returned HTTP $code (rely on the controller TTL otherwise)" ;;
+              2*)  echo "🧹 Released lease $LEASE_ID (HTTP $code) — RP free for other jobs." ;;
+              404) echo "🧹 Lease $LEASE_ID already gone (HTTP 404 — release is idempotent)." ;;
+              *)   echo "::warning::lease $LEASE_ID release returned HTTP $code (rely on the controller TTL otherwise)" ;;
             esac
           }
           trap release_lease EXIT

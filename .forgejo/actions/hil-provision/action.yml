@@ -14,14 +14,14 @@ inputs:
     description: "OIDC client_secret (Actions secret HIL_OIDC_CLIENT_SECRET)"
     required: true
   max-wait-seconds:
-    description: "Max time to keep waiting for a free RP when the bench is busy (same-repo queueing is handled by the workflow concurrency group; this is the safety net for external contention)"
-    default: "600"
+    description: "Max total time to keep retrying when the bench is busy (the lease itself is synchronous and may block ~600s per call; this bounds the retries on top of that)"
+    default: "660"
   retry-interval:
     description: "Seconds between lease attempts while the bench is busy"
     default: "30"
-  target-pi:
-    description: "Reserve a specific bench RP by pi_id or IP (the rp2040 target is wired to one RP only). Empty = any free RP. A lease that does not match is released and retried."
-    default: ""
+  target:
+    description: "RP target type to reserve, sent as POST /api/lease?target=<value> (the controller picks an RP wired with that target). Empty = any free RP."
+    default: "rp2040"
 outputs:
   ip:
     description: "IP of the provisioned RP"
@@ -51,45 +51,38 @@ runs:
         # Extract a JSON string field from a body: jget "<body>" "<key>"
         jget() { printf '%s' "$1" | grep -o "\"$2\": *\"[^\"]*\"" | head -1 | sed 's/.*: *"\(.*\)"$/\1/' || true; }
 
-        # 2) Reserve an RP. If the bench has no free RP yet, wait and retry
-        #    (the controller said nothing is available) instead of failing.
-        #    The rp2040 target is wired to a single RP, so when `target-pi` is
-        #    set we send it as a hint AND verify the answer: a non-matching
-        #    lease is released and we keep waiting for the wanted RP.
-        target="${{ inputs.target-pi }}"
+        # 2) Reserve an RP for the requested target. The controller picks an RP
+        #    wired with `target` (e.g. rp2040) — no client-side RP matching.
+        #    The lease is SYNCHRONOUS: the call long-polls until a matching RP is
+        #    free, blocking up to ~600s, so the client timeout must exceed that.
+        target="${{ inputs.target }}"
         url="${{ inputs.api-url }}/lease"
-        [ -n "$target" ] && url="${url}?pi_id=${target}"
+        [ -n "$target" ] && url="${url}?target=${target}"
         deadline=$(( $(date +%s) + ${{ inputs.max-wait-seconds }} ))
         attempt=0
         while :; do
           attempt=$((attempt + 1))
-          echo "🔧 Requesting an RP lease (attempt $attempt)…${target:+ (target $target)}"
-          resp=$(curl -sS --max-time 230 -w $'\n%{http_code}' -X POST \
+          echo "🔧 Requesting an RP lease (attempt $attempt)…${target:+ (target=$target)}"
+          # --max-time 620 > the controller's ~600s synchronous wait window.
+          resp=$(curl -sS --max-time 620 -w $'\n%{http_code}' -X POST \
             -H "Authorization: Bearer $jwt" "$url" 2>/dev/null || true)
           code=$(printf '%s' "$resp" | tail -n1)
           body=$(printf '%s' "$resp" | sed '$d')
           ip=$(jget "$body" ip); lid=$(jget "$body" lease_id); pid=$(jget "$body" pi_id)
           if { [ "$code" = "200" ] || [ "$code" = "201" ]; } && [ -n "$ip" ] && [ -n "$lid" ]; then
-            # Got a lease. With a target, make sure it is the right RP.
-            if [ -z "$target" ] || [ "$ip" = "$target" ] || [ "$pid" = "$target" ]; then
-              break
-            fi
-            echo "↩️  Leased $pid/$ip but target is $target — releasing it and waiting for the right RP…"
-            curl -sS -o /dev/null -X DELETE -H "Authorization: Bearer $jwt" \
-              "${{ inputs.api-url }}/lease/$lid" 2>/dev/null || true
+            break
           fi
           if [ "$(date +%s)" -ge "$deadline" ]; then
-            echo "::error::no${target:+ matching ($target)} RP available after waiting ${{ inputs.max-wait-seconds }}s (last HTTP ${code:-none})"
+            echo "::error::no RP available for target='${target:-any}' after ${{ inputs.max-wait-seconds }}s (last HTTP ${code:-none})"
             exit 1
           fi
           echo "⏳ Bench busy / no free RP (HTTP ${code:-none}) — waiting ${{ inputs.retry-interval }}s then retrying…"
           sleep ${{ inputs.retry-interval }}
         done
 
-        echo "✅ Got a lease on $ip"
-        # Dump the full lease response (ssh key redacted) so we can see every
-        # field the controller returns — RP id/tags (to request the right one)
-        # and any release hint (the DELETE /lease/<id> route currently 404s).
+        echo "✅ Got a lease on $ip (pi_id=$pid)"
+        # Dump the lease response (ssh key redacted) for diagnostics — fields:
+        # lease_id, pi_id, ip, mac.
         echo "ℹ️  Lease response (ssh_key_b64 redacted):"
         printf '%s' "$body" \
           | sed 's/"ssh_key_b64": *"[^"]*"/"ssh_key_b64":"<redacted>"/' \

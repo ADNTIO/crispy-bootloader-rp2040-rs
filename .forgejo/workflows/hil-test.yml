@@ -18,7 +18,9 @@ concurrency:
 jobs:
   hil-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Build (~1m) + synchronous lease (blocks up to ~10m if the RP is busy) +
+    # flash & tests (~12m): give comfortable headroom.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -48,10 +50,9 @@ jobs:
         with:
           client-id: ${{ secrets.HIL_OIDC_CLIENT_ID }}
           client-secret: ${{ secrets.HIL_OIDC_CLIENT_SECRET }}
-          # The rp2040 target (SWD probe + USB CDC) is wired to a single bench
-          # RP. Pin it so we never land on a wrong/incomplete RP (e.g. pi3b-01
-          # / .120: rp2040 off + full disk). pi_id or IP both match.
-          target-pi: "10.40.80.121"
+          # Reserve an RP wired with the rp2040 target (SWD probe + USB CDC).
+          # The controller honours ?target=<value> server-side.
+          target: "rp2040"
 
       # --- Copy + flash + tests, with the lease ALWAYS released on exit ---
       # The release is done via a bash `trap … EXIT` inside this single step,
@@ -73,8 +74,9 @@ jobs:
             code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
               -H "Authorization: Bearer $jwt" "https://hil.k8s.adnt.io/api/lease/$LEASE_ID")
             case "$code" in
-              2*) echo "🧹 Released lease $LEASE_ID (HTTP $code) — RP free for other jobs." ;;
-              *)  echo "::warning::lease $LEASE_ID release returned HTTP $code (rely on the controller TTL otherwise)" ;;
+              2*)  echo "🧹 Released lease $LEASE_ID (HTTP $code) — RP free for other jobs." ;;
+              404) echo "🧹 Lease $LEASE_ID already gone (HTTP 404 — release is idempotent)." ;;
+              *)   echo "::warning::lease $LEASE_ID release returned HTTP $code (rely on the controller TTL otherwise)" ;;
             esac
           }
           trap release_lease EXIT
