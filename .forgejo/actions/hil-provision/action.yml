@@ -19,6 +19,9 @@ inputs:
   retry-interval:
     description: "Seconds between lease attempts while the bench is busy"
     default: "30"
+  target-pi:
+    description: "Reserve a specific bench RP by pi_id or IP (the rp2040 target is wired to one RP only). Empty = any free RP. A lease that does not match is released and retried."
+    default: ""
 outputs:
   ip:
     description: "IP of the provisioned RP"
@@ -47,21 +50,33 @@ runs:
 
         # 2) Reserve an RP. If the bench has no free RP yet, wait and retry
         #    (the controller said nothing is available) instead of failing.
+        #    The rp2040 target is wired to a single RP, so when `target-pi` is
+        #    set we send it as a hint AND verify the answer: a non-matching
+        #    lease is released and we keep waiting for the wanted RP.
+        target="${{ inputs.target-pi }}"
+        url="${{ inputs.api-url }}/lease"
+        [ -n "$target" ] && url="${url}?pi_id=${target}"
         deadline=$(( $(date +%s) + ${{ inputs.max-wait-seconds }} ))
         attempt=0
         while :; do
           attempt=$((attempt + 1))
-          echo "🔧 Requesting an RP lease (attempt $attempt)…"
+          echo "🔧 Requesting an RP lease (attempt $attempt)…${target:+ (target $target)}"
           resp=$(curl -sS --max-time 230 -w $'\n%{http_code}' -X POST \
-            -H "Authorization: Bearer $jwt" "${{ inputs.api-url }}/lease" 2>/dev/null || true)
+            -H "Authorization: Bearer $jwt" "$url" 2>/dev/null || true)
           code=$(printf '%s' "$resp" | tail -n1)
           body=$(printf '%s' "$resp" | sed '$d')
-          ip=$(jget "$body" ip); lid=$(jget "$body" lease_id)
+          ip=$(jget "$body" ip); lid=$(jget "$body" lease_id); pid=$(jget "$body" pi_id)
           if { [ "$code" = "200" ] || [ "$code" = "201" ]; } && [ -n "$ip" ] && [ -n "$lid" ]; then
-            break
+            # Got a lease. With a target, make sure it is the right RP.
+            if [ -z "$target" ] || [ "$ip" = "$target" ] || [ "$pid" = "$target" ]; then
+              break
+            fi
+            echo "↩️  Leased $pid/$ip but target is $target — releasing it and waiting for the right RP…"
+            curl -sS -o /dev/null -X DELETE -H "Authorization: Bearer $jwt" \
+              "${{ inputs.api-url }}/lease/$lid" 2>/dev/null || true
           fi
           if [ "$(date +%s)" -ge "$deadline" ]; then
-            echo "::error::no RP available after waiting ${{ inputs.max-wait-seconds }}s (last HTTP ${code:-none})"
+            echo "::error::no${target:+ matching ($target)} RP available after waiting ${{ inputs.max-wait-seconds }}s (last HTTP ${code:-none})"
             exit 1
           fi
           echo "⏳ Bench busy / no free RP (HTTP ${code:-none}) — waiting ${{ inputs.retry-interval }}s then retrying…"
