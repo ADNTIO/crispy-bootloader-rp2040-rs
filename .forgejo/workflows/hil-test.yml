@@ -132,14 +132,27 @@ jobs:
           #     not connected to this host (power-only cable / not the right RP).
           echo "::group::USB CDC diagnostic (rp2040 serial = 2e8a:000a)"
           dmesg -C 2>/dev/null || true            # clear, so we only see the reset's events
-          probe-rs reset --chip RP2040 2>&1 | head -5 || true
+          # Flash a known firmware then reset-to-run so the rp2040 drives its USB,
+          # and look for ANY rp2040 device (bootloader 000a / fw 000b / BOOTSEL
+          # 0003), excluding the CMSIS-DAP probe (000c). If nothing shows, the
+          # target USB-data link to the host is down (SWD alone is not enough).
+          probe-rs download --chip RP2040 \
+            "$REPO/target/thumbv6m-none-eabi/release/crispy-bootloader" 2>&1 | tail -3 || true
+          probe-rs reset --chip RP2040 2>&1 | head -3 || true
           sleep 3
-          echo "lsusb (2e8a):"; lsusb | grep -i 2e8a || echo "  (no 2e8a device on USB)"
-          echo "serial ports:"; ls -l /dev/ttyACM* 2>/dev/null || echo "  (no /dev/ttyACM*)"
+          usb2e8a=$(lsusb | grep -i '2e8a' | grep -iv '2e8a:000c' || true)
+          tty=$(ls /dev/ttyACM* 2>/dev/null || true)
+          echo "rp2040 USB (excl. probe 000c): ${usb2e8a:-<none>}"
+          echo "serial ports: ${tty:-<none>}"
           echo "kernel USB events since reset:"
-          dmesg 2>/dev/null | grep -iE 'usb|cdc|acm|2e8a' | tail -25 \
-            || echo "  (no USB kernel events — rp2040 USB-data likely not wired to this host)"
+          dmesg 2>/dev/null | grep -iE 'usb|cdc|acm|2e8a' | tail -25 || echo "  <none>"
           echo "::endgroup::"
+
+          if [ -z "$tty" ] && [ -z "$usb2e8a" ]; then
+            echo "::error::HIL: rp2040 USB CDC ABSENT on this RP — no 2e8a:000a/b/3 and no /dev/ttyACM after flash+reset. The target USB-data link to the host is not up (the SWD probe alone is not enough). Skipping protocol tests."
+            exit 2
+          fi
+          echo "::notice::HIL: rp2040 USB present — ${usb2e8a:-?} ${tty:-?}. Running protocol tests."
 
           echo "::group::protocol tests (build skipped, flash via SWD)"
           cd "$REPO/tests/integration"
