@@ -29,6 +29,9 @@ outputs:
   lease-id:
     description: "Lease ID (pass it back when releasing)"
     value: ${{ steps.lease.outputs.lease-id }}
+  pi-id:
+    description: "Bench RP identifier (pi_id) that was reserved"
+    value: ${{ steps.lease.outputs.pi-id }}
 runs:
   using: composite
   steps:
@@ -106,5 +109,6 @@ runs:
         chmod 600 ~/.ssh/config
         echo "ip=$ip"       >> "$GITHUB_OUTPUT"
         echo "lease-id=$lid" >> "$GITHUB_OUTPUT"
+        echo "pi-id=$pid"   >> "$GITHUB_OUTPUT"
         echo "✅ RP ready: $ip — use  ssh hil-rp \"…\"  /  scp fw.elf hil-rp:/tmp/"
         echo "🖥️  Web console: https://hil.k8s.adnt.io/"

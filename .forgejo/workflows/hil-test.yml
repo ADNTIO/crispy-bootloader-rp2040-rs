@@ -60,9 +60,34 @@ jobs:
       - name: Copy, flash and run protocol tests (frees the RP on exit)
         env:
           LEASE_ID: ${{ steps.rp.outputs.lease-id }}
+          RP_IP: ${{ steps.rp.outputs.ip }}
+          RP_PI: ${{ steps.rp.outputs.pi-id }}
           HIL_OIDC_CLIENT_ID: ${{ secrets.HIL_OIDC_CLIENT_ID }}
           HIL_OIDC_CLIENT_SECRET: ${{ secrets.HIL_OIDC_CLIENT_SECRET }}
         run: |
+          # Publish the captured remote output to a `hil-results` branch so it
+          # can be read over plain git (the Forgejo API token cannot fetch
+          # Actions logs). Best-effort: never fails the job.
+          publish_result() {
+            set +e
+            [ -f /tmp/hil-result.txt ] || return 0
+            local ws="${GITHUB_WORKSPACE:-$PWD}" d auth origin
+            origin=$(git -C "$ws" remote get-url origin 2>/dev/null) || return 0
+            auth=$(git -C "$ws" config --get-regexp '^http\..*\.extraheader$' 2>/dev/null | head -1 | cut -d' ' -f2-)
+            d=$(mktemp -d)
+            { echo "run=${GITHUB_RUN_NUMBER:-?} sha=${GITHUB_SHA:-?} rp=${RP_PI:-?}/${RP_IP:-?}";
+              echo "===8<==="; cat /tmp/hil-result.txt; } > "$d/latest.txt"
+            git -C "$d" init -q
+            git -C "$d" checkout -q -b hil-results
+            git -C "$d" add latest.txt
+            git -C "$d" -c user.email=ci@adnt.io -c user.name=hil-ci \
+              commit -q -m "hil result run ${GITHUB_RUN_NUMBER:-?} [skip ci]"
+            if git -C "$d" -c http.extraheader="$auth" push -f "$origin" hil-results >/dev/null 2>&1; then
+              echo "📤 Result published to the hil-results branch."
+            else
+              echo "::warning::could not push hil-results (read the diagnostics from this log instead)"
+            fi
+          }
           release_lease() {
             set +e
             [ -n "${LEASE_ID:-}" ] || { echo "🧹 No lease to release."; return 0; }
@@ -77,7 +102,8 @@ jobs:
               *)  echo "::warning::lease $LEASE_ID release returned HTTP $code (rely on the controller TTL otherwise)" ;;
             esac
           }
-          trap release_lease EXIT
+          # Publish first (capture the diagnostics), then always free the RP.
+          trap 'publish_result; release_lease' EXIT
           set -euo pipefail
 
           # Copy sources + built firmware to the RP. Runs execute the tests as
@@ -91,7 +117,9 @@ jobs:
           scp target/firmware.bin hil-rp:~/crispy/target/firmware.bin
 
           # probe-rs + uv (lightweight), flash via SWD + protocol tests, as root.
-          ssh hil-rp 'sudo -n bash -s' <<'EOF'
+          # Tee the remote output so the trap can publish it (pipefail keeps the
+          # remote exit code so a test failure still fails the job).
+          ssh hil-rp 'sudo -n bash -s' <<'EOF' 2>&1 | tee /tmp/hil-result.txt
           set -euxo pipefail
           export HOME=/root PATH=/root/.cargo/bin:/usr/local/bin:$PATH
           REPO=/home/hil/crispy
