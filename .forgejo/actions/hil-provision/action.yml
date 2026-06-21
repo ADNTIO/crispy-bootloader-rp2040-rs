@@ -1,0 +1,107 @@
+name: "HIL provision"
+description: "Reserve an RP from the HIL bench (PoE power-cycle + boot) and set up SSH access (alias hil-rp). Waits and retries if the bench has no free RP."
+inputs:
+  authentik-url:
+    description: "Authentik base URL (for the client_credentials JWT)"
+    default: "https://authentik.k8s.adnt.io"
+  api-url:
+    description: "HIL controller API URL"
+    default: "https://hil.k8s.adnt.io/api"
+  client-id:
+    description: "OIDC client_id (Actions secret HIL_OIDC_CLIENT_ID)"
+    required: true
+  client-secret:
+    description: "OIDC client_secret (Actions secret HIL_OIDC_CLIENT_SECRET)"
+    required: true
+  max-wait-seconds:
+    description: "Max total time to keep retrying when the bench is busy (the lease itself is synchronous and may block ~600s per call; this bounds the retries on top of that)"
+    default: "660"
+  retry-interval:
+    description: "Seconds between lease attempts while the bench is busy"
+    default: "30"
+  target:
+    description: "RP target type to reserve, sent as POST /api/lease?target=<value> (the controller picks an RP wired with that target). Empty = any free RP."
+    default: "rp2040"
+outputs:
+  ip:
+    description: "IP of the provisioned RP"
+    value: ${{ steps.lease.outputs.ip }}
+  lease-id:
+    description: "Lease ID (pass it back when releasing)"
+    value: ${{ steps.lease.outputs.lease-id }}
+  pi-id:
+    description: "Bench RP identifier (pi_id) that was reserved"
+    value: ${{ steps.lease.outputs.pi-id }}
+runs:
+  using: composite
+  steps:
+    - id: lease
+      shell: bash
+      run: |
+        set -euo pipefail
+        # 1) M2M JWT via client_credentials (Authentik issues the token).
+        jwt=$(curl -fsS -X POST "${{ inputs.authentik-url }}/application/o/token/" \
+          -d grant_type=client_credentials \
+          -d client_id="${{ inputs.client-id }}" \
+          -d client_secret="${{ inputs.client-secret }}" \
+          -d scope=openid \
+          | grep -o '"access_token": *"[^"]*"' | sed 's/.*: *"\(.*\)"$/\1/')
+        [ -n "$jwt" ] || { echo "::error::no JWT (client_credentials)"; exit 1; }
+
+        # Extract a JSON string field from a body: jget "<body>" "<key>"
+        jget() { printf '%s' "$1" | grep -o "\"$2\": *\"[^\"]*\"" | head -1 | sed 's/.*: *"\(.*\)"$/\1/' || true; }
+
+        # 2) Reserve an RP for the requested target. The controller picks an RP
+        #    wired with `target` (e.g. rp2040) — no client-side RP matching.
+        #    The lease is SYNCHRONOUS: the call long-polls until a matching RP is
+        #    free, blocking up to ~600s, so the client timeout must exceed that.
+        target="${{ inputs.target }}"
+        url="${{ inputs.api-url }}/lease"
+        [ -n "$target" ] && url="${url}?target=${target}"
+        deadline=$(( $(date +%s) + ${{ inputs.max-wait-seconds }} ))
+        attempt=0
+        while :; do
+          attempt=$((attempt + 1))
+          echo "🔧 Requesting an RP lease (attempt $attempt)…${target:+ (target=$target)}"
+          # --max-time 620 > the controller's ~600s synchronous wait window.
+          resp=$(curl -sS --max-time 620 -w $'\n%{http_code}' -X POST \
+            -H "Authorization: Bearer $jwt" "$url" 2>/dev/null || true)
+          code=$(printf '%s' "$resp" | tail -n1)
+          body=$(printf '%s' "$resp" | sed '$d')
+          ip=$(jget "$body" ip); lid=$(jget "$body" lease_id); pid=$(jget "$body" pi_id)
+          if { [ "$code" = "200" ] || [ "$code" = "201" ]; } && [ -n "$ip" ] && [ -n "$lid" ]; then
+            break
+          fi
+          if [ "$(date +%s)" -ge "$deadline" ]; then
+            echo "::error::no RP available for target='${target:-any}' after ${{ inputs.max-wait-seconds }}s (last HTTP ${code:-none})"
+            exit 1
+          fi
+          echo "⏳ Bench busy / no free RP (HTTP ${code:-none}) — waiting ${{ inputs.retry-interval }}s then retrying…"
+          sleep ${{ inputs.retry-interval }}
+        done
+
+        echo "✅ Got a lease on $ip (pi_id=$pid)"
+        # Dump the lease response (ssh key redacted) for diagnostics — fields:
+        # lease_id, pi_id, ip, mac.
+        echo "ℹ️  Lease response (ssh_key_b64 redacted):"
+        printf '%s' "$body" \
+          | sed 's/"ssh_key_b64": *"[^"]*"/"ssh_key_b64":"<redacted>"/' \
+          | head -c 4000
+        echo
+        mkdir -p ~/.ssh
+        jget "$body" ssh_key_b64 | base64 -d > ~/.ssh/hil-rp
+        chmod 600 ~/.ssh/hil-rp
+        cat >> ~/.ssh/config <<EOF
+        Host hil-rp
+          HostName $ip
+          User hil
+          IdentityFile ~/.ssh/hil-rp
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+        EOF
+        chmod 600 ~/.ssh/config
+        echo "ip=$ip"       >> "$GITHUB_OUTPUT"
+        echo "lease-id=$lid" >> "$GITHUB_OUTPUT"
+        echo "pi-id=$pid"   >> "$GITHUB_OUTPUT"
+        echo "✅ RP ready: $ip — use  ssh hil-rp \"…\"  /  scp fw.elf hil-rp:/tmp/"
+        echo "🖥️  Web console: https://hil.k8s.adnt.io/"

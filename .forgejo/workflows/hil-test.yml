@@ -1,0 +1,163 @@
+name: HIL test — bootloader protocol on rp2040 target
+# Forgejo-only (GitHub ignores .forgejo/). Reserves real hardware (one bench RP
+# per run, ~4 min), so it runs on each commit to the HIL branch + on demand.
+# Principle: build the ELF on the runner, copy it to the RP, flash via the SWD
+# probe (probe-rs), then run the protocol tests. No toolchain on the RP.
+on:
+  push:
+    branches: [ci/hil-forgejo]
+  workflow_dispatch:
+
+# The bench has a single RP: serialize bench-using runs. A new run waits for the
+# previous one in this group to finish instead of fighting over the hardware
+# (cancel-in-progress: false → queue, don't cancel the running one).
+concurrency:
+  group: hil-bench
+  cancel-in-progress: false
+
+jobs:
+  hil-test:
+    runs-on: ubuntu-latest
+    # Build (~1m) + synchronous lease (blocks up to ~10m if the RP is busy) +
+    # flash & tests (~12m): give comfortable headroom.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Build firmware on the runner (x86, fast) ---
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv6m-none-eabi
+          components: llvm-tools-preview
+
+      - name: Build bootloader + firmware (ELF + firmware.bin)
+        env:
+          # The runner breaks on "HTTP2 framing layer" when downloading from
+          # crates.io; HTTP/1.1 (no multiplexing) + retries is robust.
+          CARGO_HTTP_MULTIPLEXING: "false"
+          CARGO_NET_RETRY: "10"
+        run: |
+          cargo install cargo-binutils flip-link --locked   # rust-objcopy + embedded linker
+          cargo build --release --target thumbv6m-none-eabi \
+            -p crispy-bootloader -p crispy-fw-sample-rs
+          rust-objcopy -O binary \
+            target/thumbv6m-none-eabi/release/crispy-fw-sample-rs \
+            target/firmware.bin
+
+      # --- Reserve an RP from the bench ---
+      - id: rp
+        uses: ./.forgejo/actions/hil-provision
+        with:
+          client-id: ${{ secrets.HIL_OIDC_CLIENT_ID }}
+          client-secret: ${{ secrets.HIL_OIDC_CLIENT_SECRET }}
+          # Reserve an RP wired with the rp2040 target (SWD probe + USB CDC).
+          # The controller honours ?target=<value> server-side.
+          target: "rp2040"
+
+      # --- Copy + flash + tests, with the lease ALWAYS released on exit ---
+      # The release is done via a bash `trap … EXIT` inside this single step,
+      # NOT a separate `if: always()` step: Forgejo does not reliably run a
+      # following `always()` step after a failure, which would leak the lease.
+      - name: Copy, flash and run protocol tests (frees the RP on exit)
+        env:
+          LEASE_ID: ${{ steps.rp.outputs.lease-id }}
+          HIL_OIDC_CLIENT_ID: ${{ secrets.HIL_OIDC_CLIENT_ID }}
+          HIL_OIDC_CLIENT_SECRET: ${{ secrets.HIL_OIDC_CLIENT_SECRET }}
+        run: |
+          release_lease() {
+            set +e
+            [ -n "${LEASE_ID:-}" ] || { echo "🧹 No lease to release."; return 0; }
+            jwt=$(curl -fsS -X POST https://authentik.k8s.adnt.io/application/o/token/ \
+              -d grant_type=client_credentials \
+              -d client_id="$HIL_OIDC_CLIENT_ID" -d client_secret="$HIL_OIDC_CLIENT_SECRET" \
+              -d scope=openid | grep -o '"access_token": *"[^"]*"' | sed 's/.*: *"\(.*\)"$/\1/')
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+              -H "Authorization: Bearer $jwt" "https://hil.k8s.adnt.io/api/lease/$LEASE_ID")
+            case "$code" in
+              2*)  echo "🧹 Released lease $LEASE_ID (HTTP $code) — RP free for other jobs." ;;
+              404) echo "🧹 Lease $LEASE_ID already gone (HTTP 404 — release is idempotent)." ;;
+              *)   echo "::warning::lease $LEASE_ID release returned HTTP $code (rely on the controller TTL otherwise)" ;;
+            esac
+          }
+          trap release_lease EXIT
+          set -euo pipefail
+
+          # Copy sources + built firmware to the RP. Runs execute the tests as
+          # root (probe/serial access), leaving root-owned files (.venv, target)
+          # in ~/crispy that the bench RP keeps across leases — clean with sudo.
+          git archive --format=tar HEAD \
+            | ssh hil-rp 'sudo rm -rf ~/crispy && mkdir -p ~/crispy && tar -x -C ~/crispy'
+          ssh hil-rp 'mkdir -p ~/crispy/target/thumbv6m-none-eabi/release'
+          scp target/thumbv6m-none-eabi/release/crispy-bootloader \
+              hil-rp:~/crispy/target/thumbv6m-none-eabi/release/crispy-bootloader
+          scp target/firmware.bin hil-rp:~/crispy/target/firmware.bin
+
+          # probe-rs + uv (lightweight), flash via SWD + protocol tests, as root.
+          ssh hil-rp 'sudo -n bash -s' <<'EOF'
+          set -euxo pipefail
+          export HOME=/root PATH=/root/.cargo/bin:/usr/local/bin:$PATH
+          REPO=/home/hil/crispy
+
+          echo "::group::preflight — outbound access"
+          for url in https://astral.sh https://github.com; do
+            curl -fsS --max-time 20 -o /dev/null "$url" && echo "OK $url" \
+              || { echo "::error::no outbound access to $url"; exit 1; }
+          done
+          echo "::endgroup::"
+
+          echo "::group::probe-rs + uv"
+          command -v uv >/dev/null || \
+            curl -LsSf https://astral.sh/uv/install.sh \
+              | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh
+          command -v probe-rs >/dev/null || \
+            curl --proto '=https' --tlsv1.2 -LsSf \
+              https://github.com/probe-rs/probe-rs/releases/latest/download/probe-rs-tools-installer.sh | sh
+          uv --version
+          probe-rs --version
+          echo "Probes:"; probe-rs list
+          echo "--- lsusb (is the rp2040 target powered/enumerated? expect 2e8a:000a/b) ---"
+          lsusb || true
+          echo "--- probe-rs info --chip RP2040 (normal SWD attach) ---"
+          probe-rs info --chip RP2040 2>&1 | head -25 || true
+          echo "--- probe-rs info --chip RP2040 --connect-under-reset ---"
+          probe-rs info --chip RP2040 --connect-under-reset 2>&1 | head -25 || true
+          echo "::endgroup::"
+
+          # --- USB CDC diagnostic --------------------------------------------
+          # SWD flash works on this RP but the tests time out on the bootloader
+          # serial port (2e8a:000a). Reset the freshly-flashed target and watch
+          # whether the rp2040 enumerates its USB CDC at all. This tells the
+          # bench owner WHICH link is broken:
+          #   * dmesg shows a connect/descriptor-read attempt  -> data line wired
+          #     but signalling/firmware-CDC fails;
+          #   * dmesg shows NOTHING after reset                -> rp2040 USB-data
+          #     not connected to this host (power-only cable / not the right RP).
+          echo "::group::USB CDC diagnostic (rp2040 serial = 2e8a:000a)"
+          dmesg -C 2>/dev/null || true            # clear, so we only see the reset's events
+          # Flash a known firmware then reset-to-run so the rp2040 drives its USB,
+          # and look for ANY rp2040 device (bootloader 000a / fw 000b / BOOTSEL
+          # 0003), excluding the CMSIS-DAP probe (000c). If nothing shows, the
+          # target USB-data link to the host is down (SWD alone is not enough).
+          probe-rs download --chip RP2040 \
+            "$REPO/target/thumbv6m-none-eabi/release/crispy-bootloader" 2>&1 | tail -3 || true
+          probe-rs reset --chip RP2040 2>&1 | head -3 || true
+          sleep 3
+          usb2e8a=$(lsusb | grep -i '2e8a' | grep -iv '2e8a:000c' || true)
+          tty=$(ls /dev/ttyACM* 2>/dev/null || true)
+          echo "rp2040 USB (excl. probe 000c): ${usb2e8a:-<none>}"
+          echo "serial ports: ${tty:-<none>}"
+          echo "kernel USB events since reset:"
+          dmesg 2>/dev/null | grep -iE 'usb|cdc|acm|2e8a' | tail -25 || echo "  <none>"
+          echo "::endgroup::"
+
+          if [ -z "$tty" ] && [ -z "$usb2e8a" ]; then
+            echo "::error::HIL: rp2040 USB CDC ABSENT on this RP — no 2e8a:000a/b/3 and no /dev/ttyACM after flash+reset. The target USB-data link to the host is not up (the SWD probe alone is not enough). Skipping protocol tests."
+            exit 2
+          fi
+          echo "::notice::HIL: rp2040 USB present — ${usb2e8a:-?} ${tty:-?}. Running protocol tests."
+
+          echo "::group::protocol tests (build skipped, flash via SWD)"
+          cd "$REPO/tests/integration"
+          CRISPY_SKIP_BUILD=1 uv run pytest boot/bootsequence -v --tb=short
+          echo "::endgroup::"
+          EOF
