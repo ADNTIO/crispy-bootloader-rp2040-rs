@@ -1,7 +1,9 @@
 name: HIL smoke — bench discovery (RP + rp2040)
-# Forgejo-only (GitHub ignores .forgejo/). Manual trigger: it reserves real
-# hardware, so no automatic run on push.
-on: [workflow_dispatch]
+# Forgejo-only (GitHub ignores .forgejo/). Reserves real hardware; runs on each
+# commit (bench serialized via the hil-bench concurrency group) + on demand.
+on:
+  push: {}
+  workflow_dispatch:
 
 # Share the bench serialization group with hil-test (single RP on the bench).
 concurrency:
