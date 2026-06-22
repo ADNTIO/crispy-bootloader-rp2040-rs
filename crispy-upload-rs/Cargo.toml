@@ -20,5 +20,5 @@ serialport = "4"
 postcard = { version = "1", features = ["use-std"] }
 clap = { version = "4", features = ["derive"] }
 crc = "3"
-indicatif = "0.17"
+indicatif = "0.18"
 anyhow = "1"
