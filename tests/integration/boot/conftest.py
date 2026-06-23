@@ -6,19 +6,17 @@ import pytest
 from crispy_board import project_root_from
 
 
-@pytest.fixture(scope="session")
-def device_port(request):
-    return request.config.getoption("--device")
+def _option_fixture(name):
+    @pytest.fixture(scope="session")
+    def fixture(request):
+        return request.config.getoption(name)
+    fixture.__name__ = name.lstrip("-").replace("-", "_")
+    return fixture
 
 
-@pytest.fixture(scope="session")
-def skip_build(request):
-    return request.config.getoption("--skip-build")
-
-
-@pytest.fixture(scope="session")
-def skip_flash(request):
-    return request.config.getoption("--skip-flash")
+device_port = _option_fixture("--device")
+skip_build = _option_fixture("--skip-build")
+skip_flash = _option_fixture("--skip-flash")
 
 
 @pytest.fixture(scope="session")

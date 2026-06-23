@@ -5,18 +5,17 @@
 Version injection tests.
 
 Verifies that the VERSION file is correctly injected into all build artifacts.
-Builds twice with different versions (0.3.2 and 0.3.4) and checks each artifact.
 
 Usage:
     cd tests/integration && uv run pytest boot/version/ -v
 """
 
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from crispy_board import EMBEDDED_TARGET, build_packages, project_root_from
+from crispy_board.cargo import _run
 
 RELEASE_DIR = Path(f"target/{EMBEDDED_TARGET}/release")
 
@@ -25,79 +24,29 @@ pytestmark = pytest.mark.version
 
 class TestVersionInjection:
 
-    @staticmethod
-    def _project_root() -> Path:
-        return project_root_from(__file__)
+    @pytest.fixture(autouse=True)
+    def _restore_version(self):
+        root = project_root_from(__file__)
+        original = (root / "VERSION").read_text().strip()
+        yield
+        (root / "VERSION").write_text(original)
 
-    @staticmethod
-    def _read_version(root: Path) -> str:
-        return (root / "VERSION").read_text().strip()
-
-    @staticmethod
-    def _write_version(root: Path, version: str):
+    @pytest.mark.parametrize("version", ["0.3.2", "0.3.4"], ids=["test_01_version_032", "test_02_version_034"])
+    def test_version_injection(self, version):
+        root = project_root_from(__file__)
         (root / "VERSION").write_text(version)
 
-    @staticmethod
-    def _build_all(root: Path):
         result = build_packages(root, ["crispy-upload-rs"], target=None)
         assert result.returncode == 0, f"cargo build crispy-upload-rs failed:\n{result.stderr}"
 
-        result = build_packages(
-            root, ["crispy-bootloader", "crispy-fw-sample-rs"],
-        )
+        result = build_packages(root, ["crispy-bootloader", "crispy-fw-sample-rs"])
         assert result.returncode == 0, f"cargo build embedded failed:\n{result.stderr}"
 
-    @staticmethod
-    def _cli_version(root: Path) -> str:
-        result = subprocess.run(
-            [str(root / "target/release/crispy-upload"), "--version"],
-            capture_output=True, text=True, timeout=10,
-        )
-        assert result.returncode == 0, f"crispy-upload --version failed:\n{result.stderr}"
-        return result.stdout.strip()
+        cli = _run([str(root / "target/release/crispy-upload"), "--version"], timeout=10)
+        assert cli.returncode == 0, f"crispy-upload --version failed:\n{cli.stderr}"
+        assert version in cli.stdout, f"Expected '{version}' in CLI output, got: {cli.stdout.strip()}"
 
-    @staticmethod
-    def _binary_contains_version(root: Path, binary_path: Path, version: str) -> bool:
-        full_path = root / binary_path
-        assert full_path.exists(), f"Binary not found: {full_path}"
-        data = full_path.read_bytes()
-        return version.encode() in data
-
-    @pytest.fixture(autouse=True)
-    def _restore_version(self):
-        root = self._project_root()
-        original = self._read_version(root)
-        yield
-        self._write_version(root, original)
-
-    def test_01_version_032(self):
-        root = self._project_root()
-        self._write_version(root, "0.3.2")
-        self._build_all(root)
-
-        cli_output = self._cli_version(root)
-        assert "0.3.2" in cli_output, f"Expected '0.3.2' in CLI output, got: {cli_output}"
-
-        assert self._binary_contains_version(
-            root, RELEASE_DIR / "crispy-bootloader", "0.3.2"
-        ), "Bootloader ELF does not contain version 0.3.2"
-
-        assert self._binary_contains_version(
-            root, RELEASE_DIR / "crispy-fw-sample-rs", "0.3.2"
-        ), "Firmware ELF does not contain version 0.3.2"
-
-    def test_02_version_034(self):
-        root = self._project_root()
-        self._write_version(root, "0.3.4")
-        self._build_all(root)
-
-        cli_output = self._cli_version(root)
-        assert "0.3.4" in cli_output, f"Expected '0.3.4' in CLI output, got: {cli_output}"
-
-        assert self._binary_contains_version(
-            root, RELEASE_DIR / "crispy-bootloader", "0.3.4"
-        ), "Bootloader ELF does not contain version 0.3.4"
-
-        assert self._binary_contains_version(
-            root, RELEASE_DIR / "crispy-fw-sample-rs", "0.3.4"
-        ), "Firmware ELF does not contain version 0.3.4"
+        for binary in ("crispy-bootloader", "crispy-fw-sample-rs"):
+            path = root / RELEASE_DIR / binary
+            assert path.exists(), f"Binary not found: {path}"
+            assert version.encode() in path.read_bytes(), f"{binary} does not contain version {version}"
