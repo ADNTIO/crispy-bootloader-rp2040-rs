@@ -25,7 +25,7 @@ jobs:
           targets: thumbv6m-none-eabi
           components: rustfmt, clippy
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
 
       - uses: actions/setup-node@v6
         with:
@@ -52,7 +52,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
 
       - name: Run tests
         run: make test-unit
@@ -112,7 +112,7 @@ jobs:
         with:
           targets: thumbv6m-none-eabi
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
 
       - uses: actions/setup-python@v6
         with:
