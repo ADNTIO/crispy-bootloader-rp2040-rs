@@ -39,7 +39,7 @@ jobs:
           echo "Dependency-Track HTTP $code — project $PROJECT_NAME@$PROJECT_VERSION"
           case "$code" in
             2*)  echo "✅ SBOM published (Components tab should populate)." ;;
-            401) echo "::error::401 — DTRACK_API_KEY lacks the BOM_UPLOAD permission."; cat resp.json; exit 1 ;;
+            401) echo "::error::401 — DTRACK_API_KEY lacks a permission: BOM_UPLOAD (upload) and/or PROJECT_CREATION_UPLOAD (needed by autoCreate for a new project/version)."; cat resp.json; exit 1 ;;
             404) echo "::error::404 project — check autoCreate=true + PROJECT_CREATION_UPLOAD on the server."; cat resp.json; exit 1 ;;
             *)   echo "::error::Dependency-Track upload failed (HTTP $code)."; cat resp.json; exit 1 ;;
           esac
