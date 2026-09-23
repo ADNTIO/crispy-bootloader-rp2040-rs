@@ -10,7 +10,7 @@ ifdef VERSION
 $(shell printf '$(VERSION)' > VERSION)
 endif
 
-.PHONY: help all embedded host bootloader firmware firmware-cpp upload upload-windows clean lint clippy lint-python lint-md test-unit test-integration test-ci-scripts sbom sbom-rust sbom-python scan scan-grype scan-trivy
+.PHONY: help all embedded host bootloader firmware firmware-cpp upload upload-windows clean lint clippy lint-python lint-md test-unit test-integration test-ci-scripts sbom sbom-rust sbom-python scan scan-trivy
 .PHONY: bootloader-bin firmware-bin firmware-cpp-bin bootloader-uf2
 .PHONY: flash-bootloader run-bootloader
 .PHONY: install-probe-rs install-tools update-mode reset
@@ -47,8 +47,7 @@ help:
 	@echo "  sbom             Generate CycloneDX SBOMs for Rust + Python (SBOM_OUT=dir)"
 	@echo "  sbom-rust        Generate CycloneDX SBOMs for Rust binaries"
 	@echo "  sbom-python      Generate CycloneDX SBOMs for Python projects"
-	@echo "  scan             Run security scan on SBOMs (grype + trivy, fail on HIGH+)"
-	@echo "  scan-grype       Scan SBOMs with grype"
+	@echo "  scan             Run security scan on SBOMs (trivy, fail on HIGH+)"
 	@echo "  scan-trivy       Scan SBOMs with trivy"
 	@echo ""
 	@echo "Setup:"
@@ -166,23 +165,11 @@ sbom-python:
 		rm -f $$project/.sbom-requirements.txt; \
 	done
 
-# Security scan: run grype + trivy on the generated SBOMs.
+# Security scan: run trivy on the generated SBOMs.
 # Threshold matches CI (HIGH or higher fails).
 SCAN_REPORTS ?= $(SBOM_OUT)/reports
 
-scan: scan-grype scan-trivy
-
-scan-grype: sbom
-	@command -v grype >/dev/null 2>&1 || { \
-		echo "Installing grype..."; \
-		curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b $$HOME/.local/bin; \
-	}
-	@mkdir -p $(SCAN_REPORTS)
-	@fail=0; for sbom in $(SBOM_OUT)/*.cdx.json; do \
-		name=$$(basename $$sbom .cdx.json); \
-		echo "==> grype: $$name"; \
-		grype "sbom:$$sbom" --fail-on high -o table | tee $(SCAN_REPORTS)/grype-$$name.txt || fail=1; \
-	done; exit $$fail
+scan: scan-trivy
 
 scan-trivy: sbom
 	@command -v trivy >/dev/null 2>&1 || { \

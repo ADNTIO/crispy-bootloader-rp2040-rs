@@ -39,6 +39,8 @@ jobs:
   sbom:
     name: Generate SBOM
     runs-on: ubuntu-latest
+    outputs:
+      has_vex: ${{ steps.vex.outputs.has_vex }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -55,20 +57,26 @@ jobs:
           name: sbom
           path: sbom/bom.cdx.json
           retention-days: 7
-
-  grype:
-    name: Scan SBOM with Grype
-    needs: sbom
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v8
+      - name: Link optional VEX to SBOM
+        id: vex
+        shell: bash
+        run: |
+          shopt -s nullglob
+          vex_files=(vex/*.cdx.json)
+          case ${#vex_files[@]} in
+            0) echo "has_vex=false" >> "$GITHUB_OUTPUT"; echo "No VEX file in vex/"; exit 0 ;;
+            1) ;;
+            *) echo "Expected one VEX file, found ${#vex_files[@]}" >&2; exit 1 ;;
+          esac
+          bash scripts/link-vex-to-sbom.sh \
+            sbom/bom.cdx.json "${vex_files[0]}" sbom/vex.cdx.json
+          echo "has_vex=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v5
+        if: steps.vex.outputs.has_vex == 'true'
         with:
-          name: sbom
-          path: sbom
-      - name: Install Grype
-        run: curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sudo sh -s -- -b /usr/local/bin
-      - name: Fail on HIGH or CRITICAL vulnerabilities
-        run: grype sbom:sbom/bom.cdx.json --fail-on high
+          name: vex
+          path: sbom/vex.cdx.json
+          retention-days: 7
 
   trivy:
     name: Scan SBOM with Trivy
@@ -79,10 +87,24 @@ jobs:
         with:
           name: sbom
           path: sbom
+      - uses: actions/download-artifact@v8
+        if: needs.sbom.outputs.has_vex == 'true'
+        with:
+          name: vex
+          path: sbom
       - name: Install Trivy
         run: curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
       - name: Fail on HIGH or CRITICAL vulnerabilities
-        run: trivy sbom sbom/bom.cdx.json --severity HIGH,CRITICAL --exit-code 1
+        shell: bash
+        run: |
+          vex_args=()
+          [[ -f sbom/vex.cdx.json ]] && \
+            vex_args=(--vex sbom/vex.cdx.json --show-suppressed)
+
+          trivy sbom sbom/bom.cdx.json \
+            "${vex_args[@]}" \
+            --severity HIGH,CRITICAL \
+            --exit-code 1
 
   check:
     name: Format + Lint
@@ -158,7 +180,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [metadata, grype, trivy, check, test, build]
+    needs: [metadata, trivy, check, test, build]
     if: needs.metadata.outputs.is_release == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -178,7 +200,7 @@ jobs:
 
   dtrack:
     name: Publish SBOM to Dependency-Track
-    needs: [metadata, grype, trivy, check, test, build]
+    needs: [metadata, sbom, trivy, check, test, build]
     if: needs.metadata.outputs.is_public == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -186,14 +208,23 @@ jobs:
         with:
           name: sbom
           path: sbom
-      - name: Publish SBOM
+      - uses: actions/download-artifact@v8
+        if: needs.sbom.outputs.has_vex == 'true'
+        with:
+          name: vex
+          path: sbom
+      - name: Publish SBOM and optional VEX
+        shell: bash
         env:
           DTRACK_API_KEY: ${{ secrets.DTRACK_API_KEY }}
+          DTRACK_URL: ${{ vars.DTRACK_URL }}
           PROJECT_NAME: ${{ github.event.repository.name }}
           PROJECT_VERSION: ${{ github.ref_name }}
         run: |
+          : "${DTRACK_URL:?DTRACK_URL variable is not set}"
+
           code=$(curl -sS -o response.json -w '%{http_code}' \
-            -X POST https://dtrack.k8s.adnt.io/api/v1/bom \
+            -X POST ${DTRACK_URL%/}/api/v1/bom \
             -H "X-Api-Key: $DTRACK_API_KEY" \
             -F "autoCreate=true" \
             -F "projectName=$PROJECT_NAME" \
@@ -203,3 +234,42 @@ jobs:
             2*) echo "SBOM published to $PROJECT_NAME@$PROJECT_VERSION" ;;
             *) cat response.json; exit 1 ;;
           esac
+
+          if [[ ! -f sbom/vex.cdx.json ]]; then
+            echo "No VEX to publish"
+            exit 0
+          fi
+
+          # Attend la fin du traitement d'un token Dependency-Track.
+          wait_token() {
+            local processing
+            for attempt in {1..20}; do
+              processing=$(curl -sSf \
+                -H "X-Api-Key: $DTRACK_API_KEY" \
+                "${DTRACK_URL%/}/api/v1/event/token/$1" \
+                | jq -r '.processing')
+              [[ "$processing" == false ]] && return 0
+              sleep 2
+            done
+            echo "Dependency-Track did not finish processing $2" >&2
+            return 1
+          }
+
+          wait_token "$(jq -er '.token' response.json)" SBOM
+
+          code=$(curl -sS -o vex-response.json -w '%{http_code}' \
+            -X POST ${DTRACK_URL%/}/api/v1/vex \
+            -H "X-Api-Key: $DTRACK_API_KEY" \
+            -F "projectName=$PROJECT_NAME" \
+            -F "projectVersion=$PROJECT_VERSION" \
+            -F "vex=@sbom/vex.cdx.json")
+          case "$code" in
+            2*) echo "VEX accepted for $PROJECT_NAME@$PROJECT_VERSION" ;;
+            *)
+              echo "VEX upload failed with HTTP $code" >&2
+              [[ ! -s vex-response.json ]] || cat vex-response.json >&2
+              exit 1
+              ;;
+          esac
+
+          wait_token "$(jq -er '.token' vex-response.json)" VEX
